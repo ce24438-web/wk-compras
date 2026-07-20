@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WK Compras de Combustíveis</title>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+
+  <h1>WK Compras de Combustíveis</h1>
+
+  <div class="card">
+    <div class="grid">
+
+      <div>
+        <label>Unidade</label>
+        <input type="text" id="unidade" placeholder="BM Jaraguá">
+      </div>
+
+      <div>
+        <label>Distribuidora</label>
+        <input type="text" id="distribuidora" placeholder="ON Petro">
+      </div>
+      </div>
+
+      <div>
+        <label>Produto</label>
+        <select id="produto">
+          <option value="GC">GC - Gasolina Comum</option>
+          <option value="GAD">GAD - Gasolina Aditivada</option>
+          <option value="S500">S500</option>
+          <option value="S10">S10</option>
+          <option value="ETANOL">Etanol</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Volume (m)</label>
+        <input type="number" id="volume" step="0.001" placeholder="15">
+      </div>
+
+      <div>
+        <label>Valor por litro (R$)</label>
+        <input type="number" id="valor" step="0.0001" placeholder="5.35">
+      </div>
+
+    </div>
+
+    <button onclick="adicionarCarga()">Adicionar Carga</button>
+  </div>
+
+  <div class="card">
+    <label>Importar planilha (.xlsx / .csv)</label>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+    <button onclick="importarPlanilha()">Importar Planilha</button>
+    <div class="muted">A planilha deve ter colunas: Unidade, Distribuidora, Produto, Volume, Valor (cabecalhos em qualquer idioma/case serão reconhecidos).</div>
+  </div>
+
+
+  <div class="card">
+    <div class="filters">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:12px;">
+        <div style="flex:1;min-width:180px;">
+          <label>Filtrar Unidade</label>
+          <input type="text" id="filterUnidade" placeholder="busca por unidade">
+        </div>
+        <div style="flex:1;min-width:180px;">
+          <label>Filtrar Distribuidora</label>
+          <input type="text" id="filterDistribuidora" placeholder="busca por distribuidora">
+        </div>
+        <div style="width:220px;">
+          <label>Filtrar Produto</label>
+          <select id="filterProduto">
+            <option value="">Todos</option>
+            <option value="GC">GC - Gasolina Comum</option>
+            <option value="GAD">GAD - Gasolina Aditivada</option>
+            <option value="S500">S500</option>
+            <option value="S10">S10</option>
+            <option value="ETANOL">Etanol</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button onclick="applyFilters()">Aplicar</button>
+          <button onclick="clearFilters()" style="background:#94a3b8;">Limpar</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+      <input type="text" id="bulkValor" placeholder="Novo valor por litro (ex: 5.12345)" style="width:220px;" />
+      <button onclick="applyBulkValor()">Aplicar a selecionados</button>
+      <button onclick="clearSelection()" style="background:#94a3b8;">Limpar seleção</button>
+      <button onclick="exportToCsv()" style="background:#10b981;">Exportar CSV</button>
+      <button onclick="exportToExcel()" style="background:#2563eb;">Exportar Excel</button>
+    </div>
+
+    <table id="tabela">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAllCheckbox" onclick="toggleSelectAll(this)"></th>
+          <th>Unidade</th>
+          <th>Distribuidora</th>
+          <th>Produto</th>
+          <th>Volume (m)</th>
+          <th>Litros</th>
+          <th>Valor/L</th>
+          <th>Total</th>
+          <th>Ação</th>
+        </tr>
+      </thead>
+
+      <tbody></tbody>
+    </table>
+
+    <div class="total-box">
+      TOTAL GERAL: <span id="totalGeral">R$ 0,00</span>
+    </div>
+
+  </div>
+
+</div>
+
+  <footer class="site-footer" role="contentinfo">
+    <div class="signature">By JOÃO PEDRO</div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="script.js"></script>
+
+</body>
+</html>

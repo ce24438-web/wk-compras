@@ -1,0 +1,74 @@
+IF(
+ {PLACA}="",
+ "",
+ 
+ IF(
+  AND(
+   {Name}="KBW",
+   OR({PLACA}="RBQ-7E73",{PLACA}="QTQ-8F17"{PLACA}="RBQ-7E73")
+  ),
+  0.27,
+
+  IF(
+   AND(
+    {Name}="REGIONAL",
+    OR({PLACA}="RBQ-7E73",{PLACA}="QTQ-8F17",{PLACA}="SCP-5D12")
+   ),
+   0,
+
+   IF(
+    OR(
+     {PLACA}="JJZ-3F90",
+     {PLACA}="ELQ-7725",
+     {PLACA}="NKY-9604",
+     {PLACA}="OMJ-1G64",
+     {PLACA}="EIO-8036",
+     {PLACA}="OML-0727",
+     {PLACA}="QTQ-8F17",
+     {PLACA}="RBQ-7E73"
+     {PLACA}="SCP-5D12"
+    ),
+
+    SWITCH(
+     {Name},
+     "CAMPINORTE",0.19,
+     "GOIANESIA",0.15,
+     "JARAGUA",0.12,
+     "ANAPOLIS",0.09,
+     "CATALAO",0.17,
+     "RIO VERDE",0.17,
+     "JATAI",0.19,
+     "PLANALTINA",0.19,
+     "NIQUELANDIA",0.20,
+     "QUIRINOPOLIS",0.19,
+     "REGIONAL",0.14,
+     "KBW",0.26,
+     "REDE DE POSTOS WK",0.19,
+     "TRR JATAI",0.10,
+     0
+    ),
+
+    SWITCH(
+     {Name},
+     "CAMPINORTE",0.17,
+     "GOIANESIA",0.15,
+     "JARAGUA",0.09,
+     "ANAPOLIS",0.09,
+     "CATALAO",0.17,
+     "RIO VERDE",0.12,
+     "JATAI",0.16,
+     "PLANALTINA",0.17,
+     "NIQUELANDIA",0.20,
+     "QUIRINOPOLIS",0.20,
+     "REGIONAL",0.15,
+     "KBW",0.27,
+     "REDE DE POSTOS WK",0.16,
+     "WK DIESEL",0.10,
+     "QUERENCIA",0.23,
+     0
+    )
+
+   )
+  )
+ )
+)
