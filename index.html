@@ -122,6 +122,40 @@
 
   </div>
 
+  <div class="card">
+    <h2 style="margin-top: 0; color: var(--brand-blue-800);">Cargas no Boleto</h2>
+    
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+      <button onclick="exportBoletoToCsv()" style="background:#10b981;">Exportar CSV</button>
+      <button onclick="exportBoletoToExcel()" style="background:#2563eb;">Exportar Excel</button>
+    </div>
+
+    <table id="tabelaBoleto">
+      <thead>
+        <tr>
+          <th>Unidade</th>
+          <th>Distribuidora</th>
+          <th>Produto</th>
+          <th>Volume (m)</th>
+          <th>Litros</th>
+          <th>Valor/L</th>
+          <th>Total</th>
+          <th>Ação</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div id="mensagemVazia" style="text-align: center; color: var(--muted); padding: 20px;">
+      Nenhuma carga no boleto ainda. Clique em "Mover para Boleto" na tabela acima.
+    </div>
+
+    <div class="total-box" id="totalBoletoBox" style="display: none;">
+      TOTAL BOLETO: <span id="totalBoleto">R$ 0,00</span>
+    </div>
+
+  </div>
+
 </div>
 
   <footer class="site-footer" role="contentinfo">
