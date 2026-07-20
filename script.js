@@ -1,11 +1,13 @@
 let totalGeral = '0'; // armazenado como string decimal exata
 let entries = [];
+let boletos = []; // novo array para cargas no boleto
 let entryIdCounter = 1;
 let activeFilters = { unidade: '', distribuidora: '', produto: '' };
 
 function saveState() {
 	const state = {
 		entries,
+		boletos,
 		entryIdCounter,
 		activeFilters
 	};
@@ -18,12 +20,14 @@ function loadState() {
 	try {
 		const state = JSON.parse(raw);
 		if (Array.isArray(state.entries)) entries = state.entries.map(entry => ({ ...entry }));
+		if (Array.isArray(state.boletos)) boletos = state.boletos.map(boleto => ({ ...boleto }));
 		entryIdCounter = typeof state.entryIdCounter === 'number' && state.entryIdCounter > 0 ? state.entryIdCounter : entryIdCounter;
 		activeFilters = state.activeFilters || activeFilters;
 		if (document.getElementById('filterUnidade')) document.getElementById('filterUnidade').value = activeFilters.unidade || '';
 		if (document.getElementById('filterDistribuidora')) document.getElementById('filterDistribuidora').value = activeFilters.distribuidora || '';
 		if (document.getElementById('filterProduto')) document.getElementById('filterProduto').value = activeFilters.produto || '';
 		renderTable();
+		renderTabelaBoleto();
 	} catch (err) {
 		console.warn('Não foi possível carregar estado salvo:', err);
 	}
@@ -226,7 +230,7 @@ function renderTable() {
 			<td>${formatNumberFromDecimalString(entry.litrosStr)}</td>
 			<td>${formatarMoedaFromDecimalString(entry.valorNorm)}</td>
 			<td>${formatarMoedaFromDecimalString(entry.totalStr)}</td>
-			<td style="display:flex;gap:8px;justify-content:center;"><button class="delete-btn" style="background:#f59e0b;" onclick="editValorById('${entry.id}')">Editar</button><button class="delete-btn" onclick="removerLinhaById('${entry.id}')">Excluir</button></td>
+			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#10b981;" onclick="moverParaBoleto('${entry.id}')">Boleto</button><button class="delete-btn" style="background:#f59e0b;" onclick="editValorById('${entry.id}')">Editar</button><button class="delete-btn" onclick="removerLinhaById('${entry.id}')">Excluir</button></td>
 		`;
 
 		totalVisible = addDecimalStrings(totalVisible, entry.totalStr);
@@ -416,6 +420,145 @@ function exportToExcel() {
 	const workbook = XLSX.utils.book_new();
 	XLSX.utils.book_append_sheet(workbook, worksheet, 'WK Compras');
 	XLSX.writeFile(workbook, 'wk_compras_export.xlsx');
+}
+
+function moverParaBoleto(id) {
+	const entry = entries.find(e => String(e.id) === String(id));
+	if (!entry || entry.removed) return alert('Carga não encontrada');
+	
+	// Adiciona à lista de boletos
+	boletos.push({
+		id: entry.id,
+		unidade: entry.unidade,
+		distribuidora: entry.distribuidora,
+		produto: entry.produto,
+		volumeNorm: entry.volumeNorm,
+		litrosStr: entry.litrosStr,
+		valorNorm: entry.valorNorm,
+		totalStr: entry.totalStr
+	});
+	
+	// Remove da tabela principal
+	entry.removed = true;
+	
+	renderTable();
+	renderTabelaBoleto();
+}
+
+function renderTabelaBoleto() {
+	const tbody = document.querySelector('#tabelaBoleto tbody');
+	const msgVazia = document.getElementById('mensagemVazia');
+	const totalBox = document.getElementById('totalBoletoBox');
+	
+	tbody.innerHTML = '';
+	let totalBoleto = '0';
+	
+	boletos.forEach(boleto => {
+		const row = tbody.insertRow();
+		row.innerHTML = `
+			<td>${boleto.unidade}</td>
+			<td>${boleto.distribuidora}</td>
+			<td>${boleto.produto}</td>
+			<td>${boleto.volumeNorm}</td>
+			<td>${formatNumberFromDecimalString(boleto.litrosStr)}</td>
+			<td>${formatarMoedaFromDecimalString(boleto.valorNorm)}</td>
+			<td>${formatarMoedaFromDecimalString(boleto.totalStr)}</td>
+			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#06b6d4;" onclick="desfazerBoleto('${boleto.id}')">Desfazer</button><button class="delete-btn" onclick="removerBoleto('${boleto.id}')">Excluir</button></td>
+		`;
+		totalBoleto = addDecimalStrings(totalBoleto, boleto.totalStr);
+	});
+	
+	if (boletos.length === 0) {
+		msgVazia.style.display = 'block';
+		totalBox.style.display = 'none';
+	} else {
+		msgVazia.style.display = 'none';
+		totalBox.style.display = 'block';
+		document.getElementById('totalBoleto').innerText = formatarMoedaFromDecimalString(totalBoleto);
+	}
+	
+	saveState();
+}
+
+function desfazerBoleto(id) {
+	const boletoIndex = boletos.findIndex(b => String(b.id) === String(id));
+	if (boletoIndex === -1) return;
+	
+	boletos.splice(boletoIndex, 1);
+	
+	const entry = entries.find(e => String(e.id) === String(id));
+	if (entry) {
+		entry.removed = false;
+	}
+	
+	renderTable();
+	renderTabelaBoleto();
+}
+
+function removerBoleto(id) {
+	const boletoIndex = boletos.findIndex(b => String(b.id) === String(id));
+	if (boletoIndex === -1) return;
+	
+	boletos.splice(boletoIndex, 1);
+	
+	const entryIndex = entries.findIndex(e => String(e.id) === String(id));
+	if (entryIndex !== -1) {
+		entries[entryIndex].removed = true;
+	}
+	
+	renderTabelaBoleto();
+}
+
+function exportBoletoToCsv() {
+	if (boletos.length === 0) { alert('Não há cargas no boleto para exportar.'); return; }
+	
+	const groups = {};
+	boletos.forEach(boleto => {
+		const key = `${boleto.distribuidora}|||${boleto.unidade}`;
+		if (!groups[key]) {
+			groups[key] = {
+				Distribuidora: boleto.distribuidora,
+				Unidade: boleto.unidade,
+				Total: '0'
+			};
+		}
+		groups[key].Total = addDecimalStrings(groups[key].Total, boleto.totalStr);
+	});
+	
+	const rows = Object.values(groups).map(group => ({
+		Unidade: group.Unidade,
+		Distribuidora: group.Distribuidora,
+		Total: formatarMoedaFromDecimalString(group.Total)
+	}));
+	
+	const header = ['Distribuidora','Unidade','Total'].join(';');
+	const csv = [header].concat(rows.map(row => [row.Distribuidora, row.Unidade, row.Total].map(value => '"' + String(value).replace(/"/g, '""') + '"').join(';'))).join('\r\n');
+	const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = 'wk_boletos_export.csv';
+	a.click();
+	URL.revokeObjectURL(url);
+}
+
+function exportBoletoToExcel() {
+	if (boletos.length === 0) { alert('Não há cargas no boleto para exportar.'); return; }
+	
+	const rows = boletos.map(boleto => ({
+		Unidade: boleto.unidade,
+		Distribuidora: boleto.distribuidora,
+		Produto: boleto.produto,
+		'Volume (m)': boleto.volumeNorm,
+		Litros: formatNumberFromDecimalString(boleto.litrosStr),
+		'Valor/L': formatarMoedaFromDecimalString(boleto.valorNorm),
+		Total: formatarMoedaFromDecimalString(boleto.totalStr)
+	}));
+	
+	const worksheet = XLSX.utils.json_to_sheet(rows);
+	const workbook = XLSX.utils.book_new();
+	XLSX.utils.book_append_sheet(workbook, worksheet, 'WK Boletos');
+	XLSX.writeFile(workbook, 'wk_boletos_export.xlsx');
 }
 
 window.addEventListener('load', loadState);
