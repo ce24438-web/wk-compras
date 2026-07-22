@@ -22,18 +22,32 @@
       </div>
 
       <div>
+        <label>Data (MM/DD)</label>
+        <input type="text" id="data" placeholder="MM/DD" maxlength="5">
+      </div>
+
+      <div>
+        <label>Etiqueta</label>
+        <select id="etiqueta">
+          <option value="">Nenhuma</option>
+          <option value="Hoje">Hoje</option>
+          <option value="Ontem">Ontem</option>
+          <option value="Antes de Ontem">Antes de Ontem</option>
+          <option value="Amanhã">Amanhã</option>
+        </select>
+      </div>
+
+      <div>
         <label>Distribuidora</label>
         <input type="text" id="distribuidora" placeholder="ON Petro">
       </div>
-      </div>
-
       <div>
         <label>Produto</label>
         <select id="produto">
           <option value="GC">GC - Gasolina Comum</option>
           <option value="GAD">GAD - Gasolina Aditivada</option>
-          <option value="S500">S500</option>
-          <option value="S10">S10</option>
+          <option value="S-500">S-500</option>
+          <option value="S-10">S-10</option>
           <option value="ETANOL">Etanol</option>
         </select>
       </div>
@@ -60,6 +74,16 @@
     <div class="muted">A planilha deve ter colunas: Unidade, Distribuidora, Produto, Volume, Valor (cabecalhos em qualquer idioma/case serão reconhecidos).</div>
   </div>
 
+  <div class="card">
+    <label>Backup do sistema</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+      <button onclick="exportBackup()" style="background:#2563eb;">Exportar Backup</button>
+      <button onclick="document.getElementById('backupInput').click()" style="background:#10b981;">Importar Backup</button>
+      <input type="file" id="backupInput" accept=".json" style="display:none" onchange="handleBackupImport(this)" />
+    </div>
+    <div class="muted">Use o backup para restaurar seus dados se precisar alterar o código ou trocar de computador.</div>
+  </div>
+
 
   <div class="card">
     <div class="filters">
@@ -78,8 +102,8 @@
             <option value="">Todos</option>
             <option value="GC">GC - Gasolina Comum</option>
             <option value="GAD">GAD - Gasolina Aditivada</option>
-            <option value="S500">S500</option>
-            <option value="S10">S10</option>
+            <option value="S-500">S-500</option>
+            <option value="S-10">S-10</option>
             <option value="ETANOL">Etanol</option>
           </select>
         </div>
@@ -103,6 +127,8 @@
         <tr>
           <th><input type="checkbox" id="selectAllCheckbox" onclick="toggleSelectAll(this)"></th>
           <th>Unidade</th>
+          <th>Etiqueta</th>
+          <th>Data</th>
           <th>Distribuidora</th>
           <th>Produto</th>
           <th>Volume (m)</th>
@@ -124,16 +150,89 @@
 
   <div class="card">
     <h2 style="margin-top: 0; color: var(--brand-blue-800);">Cargas no Boleto</h2>
-    
+
+    <div class="filters" style="margin-bottom:16px;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+        <div style="flex:1;min-width:180px;">
+          <label>Filtrar Unidade</label>
+          <input type="text" id="filterBoletoUnidade" placeholder="busca por unidade">
+        </div>
+        <div style="flex:1;min-width:180px;">
+          <label>Filtrar Distribuidora</label>
+          <input type="text" id="filterBoletoDistribuidora" placeholder="busca por distribuidora">
+        </div>
+        <div style="width:220px;">
+          <label>Filtrar Produto</label>
+          <select id="filterBoletoProduto">
+            <option value="">Todos</option>
+            <option value="GC">GC - Gasolina Comum</option>
+            <option value="GAD">GAD - Gasolina Aditivada</option>
+            <option value="S-500">S-500</option>
+            <option value="S-10">S-10</option>
+            <option value="ETANOL">Etanol</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button onclick="applyBoletoFilters()">Aplicar</button>
+          <button onclick="clearBoletoFilters()" style="background:#94a3b8;">Limpar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-bottom:16px;">
+      <div>
+        <label>Unidade</label>
+        <input type="text" id="boletoUnidade" placeholder="BM Jaraguá">
+      </div>
+      <div>
+        <label>Etiqueta</label>
+        <select id="boletoEtiqueta">
+          <option value="">Nenhuma</option>
+          <option value="Hoje">Hoje</option>
+          <option value="Ontem">Ontem</option>
+          <option value="Antes de Ontem">Antes de Ontem</option>
+          <option value="Amanhã">Amanhã</option>
+        </select>
+      </div>
+      <div>
+        <label>Distribuidora</label>
+        <input type="text" id="boletoDistribuidora" placeholder="ON Petro">
+      </div>
+      <div>
+        <label>Produto</label>
+        <select id="boletoProduto">
+          <option value="GC">GC - Gasolina Comum</option>
+          <option value="GAD">GAD - Gasolina Aditivada</option>
+          <option value="S-500">S-500</option>
+          <option value="S-10">S-10</option>
+          <option value="ETANOL">Etanol</option>
+        </select>
+      </div>
+      <div>
+        <label>Volume (m)</label>
+        <input type="number" id="boletoVolume" step="0.001" placeholder="15">
+      </div>
+      <div>
+        <label>Valor por litro (R$)</label>
+        <input type="number" id="boletoValor" step="0.0001" placeholder="5.35">
+      </div>
+    </div>
+
+    <button onclick="adicionarCargaBoleto()" style="margin-bottom:16px;">Adicionar ao Boleto</button>
+
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
       <button onclick="exportBoletoToCsv()" style="background:#10b981;">Exportar CSV</button>
       <button onclick="exportBoletoToExcel()" style="background:#2563eb;">Exportar Excel</button>
+      <button onclick="clearBoletoSelection()" style="background:#94a3b8;">Limpar seleção</button>
     </div>
 
     <table id="tabelaBoleto">
       <thead>
         <tr>
+          <th><input type="checkbox" id="selectAllBoletoCheckbox" onclick="toggleSelectAllBoleto(this)"></th>
           <th>Unidade</th>
+          <th>Etiqueta</th>
+          <th>Data</th>
           <th>Distribuidora</th>
           <th>Produto</th>
           <th>Volume (m)</th>

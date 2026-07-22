@@ -166,11 +166,18 @@ tbody tr:hover {
 
 .signature {
 	text-align: center;
-	color: var(--muted);
-	font-weight: 700;
+	color: #000000;
+	font-weight: 800;
 	font-size: 14px;
-	padding: 8px 0 20px;
-	letter-spacing: 0.6px;
+	padding: 10px 16px 22px;
+	letter-spacing: 1.2px;
+	text-transform: uppercase;
+	text-shadow: 0 0 6px rgba(255, 255, 255, 0.9), 0 0 10px rgba(11, 97, 216, 0.25);
+	background: linear-gradient(90deg, rgba(225, 29, 72, 0.12), rgba(11, 97, 216, 0.12), rgba(225, 29, 72, 0.12));
+	border-radius: 999px;
+	display: block;
+	margin: 6px auto 0;
+	box-shadow: 0 4px 14px rgba(11, 97, 216, 0.10);
 }
 
 .muted {

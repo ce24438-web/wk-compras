@@ -3,13 +3,15 @@ let entries = [];
 let boletos = []; // novo array para cargas no boleto
 let entryIdCounter = 1;
 let activeFilters = { unidade: '', distribuidora: '', produto: '' };
+let boletoFilters = { unidade: '', distribuidora: '', produto: '' };
 
 function saveState() {
 	const state = {
 		entries,
 		boletos,
 		entryIdCounter,
-		activeFilters
+		activeFilters,
+		boletoFilters
 	};
 	localStorage.setItem('wkComprasState', JSON.stringify(state));
 }
@@ -19,13 +21,17 @@ function loadState() {
 	if (!raw) return;
 	try {
 		const state = JSON.parse(raw);
-		if (Array.isArray(state.entries)) entries = state.entries.map(entry => ({ ...entry }));
-		if (Array.isArray(state.boletos)) boletos = state.boletos.map(boleto => ({ ...boleto }));
+		if (Array.isArray(state.entries)) entries = state.entries.map(entry => ({ etiqueta: '', ...entry }));
+		if (Array.isArray(state.boletos)) boletos = state.boletos.map(boleto => ({ etiqueta: '', selected: Boolean(boleto.selected), ...boleto }));
 		entryIdCounter = typeof state.entryIdCounter === 'number' && state.entryIdCounter > 0 ? state.entryIdCounter : entryIdCounter;
 		activeFilters = state.activeFilters || activeFilters;
+		boletoFilters = state.boletoFilters || boletoFilters;
 		if (document.getElementById('filterUnidade')) document.getElementById('filterUnidade').value = activeFilters.unidade || '';
 		if (document.getElementById('filterDistribuidora')) document.getElementById('filterDistribuidora').value = activeFilters.distribuidora || '';
 		if (document.getElementById('filterProduto')) document.getElementById('filterProduto').value = activeFilters.produto || '';
+		if (document.getElementById('filterBoletoUnidade')) document.getElementById('filterBoletoUnidade').value = boletoFilters.unidade || '';
+		if (document.getElementById('filterBoletoDistribuidora')) document.getElementById('filterBoletoDistribuidora').value = boletoFilters.distribuidora || '';
+		if (document.getElementById('filterBoletoProduto')) document.getElementById('filterBoletoProduto').value = boletoFilters.produto || '';
 		renderTable();
 		renderTabelaBoleto();
 	} catch (err) {
@@ -46,9 +52,9 @@ function toggleSelectAll(checkbox) {
 	const fProd = (activeFilters.produto || '').toLowerCase().trim();
 	entries.forEach(entry => {
 		if (entry.removed) { entry.selected = false; return; }
-		if (fUnidade && !entry.unidade.toLowerCase().includes(fUnidade)) return;
-		if (fDistrib && !entry.distribuidora.toLowerCase().includes(fDistrib)) return;
-		if (fProd && fProd !== '' && !entry.produto.toLowerCase().includes(fProd)) return;
+		if (fUnidade && !String(entry.unidade || '').toLowerCase().includes(fUnidade)) return;
+		if (fDistrib && !String(entry.distribuidora || '').toLowerCase().includes(fDistrib)) return;
+		if (!produtoFiltra(entry.produto, fProd)) return;
 		entry.selected = checked;
 	});
 	renderTable();
@@ -58,6 +64,29 @@ function clearSelection() {
 	entries.forEach(e => e.selected = false);
 	const chk = document.getElementById('selectAllCheckbox'); if (chk) chk.checked = false;
 	renderTable();
+}
+
+function produtoFiltra(entryProduto, filtroProduto) {
+	const normalize = str => String(str || '').toLowerCase().replace(/[-\s]/g, '');
+	const entryNorm = normalize(entryProduto);
+	const filtroNorm = normalize(filtroProduto);
+	if (!filtroNorm) return true;
+
+	const produtoMap = {
+		gc: ['gc', 'gasolinacomum'],
+		gad: ['gad', 'gasolinaaditivada'],
+		's10': ['s10'],
+		's500': ['s500'],
+		etanol: ['etanol']
+	};
+
+	for (const termos of Object.values(produtoMap)) {
+		if (termos.includes(filtroNorm)) {
+			return termos.some(termo => entryNorm.includes(termo));
+		}
+	}
+
+	return entryNorm.includes(filtroNorm);
 }
 
 function applyBulkValor() {
@@ -75,6 +104,36 @@ function applyBulkValor() {
 	});
 	if (!any) { alert('Nenhuma linha selecionada.'); return; }
 	const chk = document.getElementById('selectAllCheckbox'); if (chk) chk.checked = false;
+	renderTable();
+}
+
+function applyFilters() {
+	activeFilters.unidade = document.getElementById('filterUnidade').value || '';
+	activeFilters.distribuidora = document.getElementById('filterDistribuidora').value || '';
+	activeFilters.produto = document.getElementById('filterProduto').value || '';
+	renderTable();
+}
+
+function applyBoletoFilters() {
+	boletoFilters.unidade = document.getElementById('filterBoletoUnidade').value || '';
+	boletoFilters.distribuidora = document.getElementById('filterBoletoDistribuidora').value || '';
+	boletoFilters.produto = document.getElementById('filterBoletoProduto').value || '';
+	renderTabelaBoleto();
+}
+
+function clearBoletoFilters() {
+	boletoFilters = { unidade: '', distribuidora: '', produto: '' };
+	if (document.getElementById('filterBoletoUnidade')) document.getElementById('filterBoletoUnidade').value = '';
+	if (document.getElementById('filterBoletoDistribuidora')) document.getElementById('filterBoletoDistribuidora').value = '';
+	if (document.getElementById('filterBoletoProduto')) document.getElementById('filterBoletoProduto').value = '';
+	renderTabelaBoleto();
+}
+
+function clearFilters() {
+	activeFilters = { unidade: '', distribuidora: '', produto: '' };
+	if (document.getElementById('filterUnidade')) document.getElementById('filterUnidade').value = '';
+	if (document.getElementById('filterDistribuidora')) document.getElementById('filterDistribuidora').value = '';
+	if (document.getElementById('filterProduto')) document.getElementById('filterProduto').value = '';
 	renderTable();
 }
 
@@ -183,20 +242,39 @@ function formatNumberFromDecimalString(s) {
 
 function adicionarCarga() {
 	const unidade = document.getElementById('unidade').value.trim();
+	const data = document.getElementById('data').value.trim();
+	const etiqueta = document.getElementById('etiqueta').value;
 	const distribuidora = document.getElementById('distribuidora').value.trim();
 	const produto = document.getElementById('produto').value;
 	const volumeStrRaw = document.getElementById('volume').value.trim();
 	const valorStrRaw = document.getElementById('valor').value.trim();
 
-	if (!unidade || !distribuidora || !volumeStrRaw || !valorStrRaw) {
+	if (!unidade || !data || !distribuidora || !volumeStrRaw || !valorStrRaw) {
 		alert('Preencha todos os campos!');
 		return;
 	}
 
-	adicionarCargaComDados(unidade, distribuidora, produto, volumeStrRaw, valorStrRaw);
+	if (!isValidMonthDay(data)) {
+		alert('Informe a data no formato MM/DD.');
+		return;
+	}
+
+	adicionarCargaComDados(unidade, data, etiqueta, distribuidora, produto, volumeStrRaw, valorStrRaw);
 
 	document.getElementById('volume').value = '';
 	document.getElementById('valor').value = '';
+	document.getElementById('data').value = '';
+	document.getElementById('etiqueta').value = '';
+}
+
+function isValidMonthDay(value) {
+	const match = /^([0-1][0-9])\/([0-3][0-9])$/.exec(value);
+	if (!match) return false;
+	const month = Number(match[1]);
+	const day = Number(match[2]);
+	if (month < 1 || month > 12) return false;
+	const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+	return day >= 1 && day <= daysInMonth[month - 1];
 }
 
 function removerLinhaById(id) {
@@ -216,14 +294,22 @@ function renderTable() {
 
 	entries.forEach(entry => {
 		if (entry.removed) return;
-		if (fUnidade && !entry.unidade.toLowerCase().includes(fUnidade)) return;
-		if (fDistrib && !entry.distribuidora.toLowerCase().includes(fDistrib)) return;
-		if (fProd && fProd !== '' && !entry.produto.toLowerCase().includes(fProd)) return;
+		if (fUnidade && !String(entry.unidade || '').toLowerCase().includes(fUnidade)) return;
+		if (fDistrib && !String(entry.distribuidora || '').toLowerCase().includes(fDistrib)) return;
+		if (!produtoFiltra(entry.produto, fProd)) return;
 
 		const row = tbody.insertRow();
 		row.innerHTML = `
 			<td><input type="checkbox" data-entry-id="${entry.id}" onchange="toggleSelectEntry('${entry.id}', this.checked)" ${entry.selected ? 'checked' : ''}></td>
 			<td>${entry.unidade}</td>
+			<td><select onchange="setEntryLabel('${entry.id}', this.value)">
+				<option value="" ${entry.etiqueta === '' ? 'selected' : ''}>Nenhuma</option>
+				<option value="Hoje" ${entry.etiqueta === 'Hoje' ? 'selected' : ''}>Hoje</option>
+				<option value="Ontem" ${entry.etiqueta === 'Ontem' ? 'selected' : ''}>Ontem</option>
+				<option value="Antes de Ontem" ${entry.etiqueta === 'Antes de Ontem' ? 'selected' : ''}>Antes de Ontem</option>
+				<option value="Amanhã" ${entry.etiqueta === 'Amanhã' ? 'selected' : ''}>Amanhã</option>
+			</select></td>
+			<td>${entry.data || ''}</td>
 			<td>${entry.distribuidora}</td>
 			<td>${entry.produto}</td>
 			<td>${entry.volumeNorm}</td>
@@ -240,18 +326,27 @@ function renderTable() {
 	saveState();
 }
 
-function editValorById(id) {
+function setEntryLabel(id, label) {
 	const entry = entries.find(e => String(e.id) === String(id));
-	if (!entry) return alert('Registro não encontrado');
-	const current = entry.valorNorm;
-	const input = prompt('Informe o novo Valor por litro (use ponto para decimais):', current);
+	if (!entry) return;
+	entry.etiqueta = String(label || '');
+	renderTable();
+}
+
+function editValorById(id) {
+	const selectedEntries = entries.filter(e => !e.removed && e.selected);
+	const targetEntries = selectedEntries.length > 0 ? selectedEntries : [entries.find(e => String(e.id) === String(id))].filter(Boolean);
+	if (!targetEntries.length) return alert('Registro não encontrado');
+	const current = targetEntries[0].valorNorm;
+	const input = prompt('Informe o novo Valor por litro para os itens selecionados (use ponto para decimais):', current);
 	if (input === null) return; // cancelou
 	const novo = _normalizeDecimalString(String(input));
 	if (novo === '0' && String(input).trim() !== '0') { alert('Valor inválido'); return; }
 
-	entry.valorNorm = novo;
-	// recalcula total: litrosStr * valorNorm
-	entry.totalStr = multiplyDecimalStrings(entry.litrosStr, entry.valorNorm);
+	targetEntries.forEach(entry => {
+		entry.valorNorm = novo;
+		entry.totalStr = multiplyDecimalStrings(entry.litrosStr, entry.valorNorm);
+	});
 	renderTable();
 }
 
@@ -271,7 +366,7 @@ function inserirLinhaNaTabela(id, unidade, distribuidora, produto, volumeNorm, l
 	`;
 }
 
-function adicionarCargaComDados(unidade, distribuidora, produto, volumeStrRaw, valorStrRaw) {
+function adicionarCargaComDados(unidade, data, etiqueta, distribuidora, produto, volumeStrRaw, valorStrRaw) {
 	const volumeNorm = _normalizeDecimalString(String(volumeStrRaw));
 	const valorNorm = _normalizeDecimalString(String(valorStrRaw));
 
@@ -281,6 +376,8 @@ function adicionarCargaComDados(unidade, distribuidora, produto, volumeStrRaw, v
 	const entry = {
 		id: entryIdCounter++,
 		unidade: String(unidade),
+		etiqueta: String(etiqueta || ''),
+		data: String(data),
 		distribuidora: String(distribuidora),
 		produto: String(produto),
 		volumeNorm,
@@ -293,6 +390,48 @@ function adicionarCargaComDados(unidade, distribuidora, produto, volumeStrRaw, v
 
 	entries.push(entry);
 	renderTable();
+}
+
+function adicionarCargaBoleto() {
+	const unidade = document.getElementById('boletoUnidade').value.trim();
+	const etiqueta = document.getElementById('boletoEtiqueta').value;
+	const distribuidora = document.getElementById('boletoDistribuidora').value.trim();
+	const produto = document.getElementById('boletoProduto').value;
+	const volumeStrRaw = document.getElementById('boletoVolume').value.trim();
+	const valorStrRaw = document.getElementById('boletoValor').value.trim();
+
+	if (!unidade || !distribuidora || !volumeStrRaw || !valorStrRaw) {
+		alert('Preencha todos os campos do boleto.');
+		return;
+	}
+
+	const volumeNorm = _normalizeDecimalString(String(volumeStrRaw));
+	const valorNorm = _normalizeDecimalString(String(valorStrRaw));
+	const litrosStr = multiplyDecimalStrings(volumeNorm, '1000');
+	const totalStr = multiplyDecimalStrings(litrosStr, valorNorm);
+
+	boletos.push({
+		id: entryIdCounter++,
+		unidade: String(unidade),
+		etiqueta: String(etiqueta || ''),
+		data: '',
+		distribuidora: String(distribuidora),
+		produto: String(produto),
+		selected: false,
+		volumeNorm,
+		litrosStr,
+		valorNorm,
+		totalStr
+	});
+
+	document.getElementById('boletoUnidade').value = '';
+	document.getElementById('boletoEtiqueta').value = '';
+	document.getElementById('boletoDistribuidora').value = '';
+	document.getElementById('boletoProduto').value = 'GC';
+	document.getElementById('boletoVolume').value = '';
+	document.getElementById('boletoValor').value = '';
+
+	renderTabelaBoleto();
 }
 
 function importarPlanilha() {
@@ -310,32 +449,29 @@ function importarPlanilha() {
 
 			// process rows
 			json.forEach((row) => {
-				// normalize keys: find values by likely header names (case-insensitive)
 				const keys = Object.keys(row);
 				const map = {};
 				keys.forEach(k => { map[k.toLowerCase().trim()] = row[k]; });
 
 				function findVal(names) {
 					for (const n of names) {
-				if (Object.prototype.hasOwnProperty.call(map, n)) return map[n];
-			}
-			// try direct access by header variants
-			for (const k of keys) {
-				if (names.includes(k.toLowerCase().trim())) return row[k];
-			}
-			return undefined;
-		}
+						if (Object.prototype.hasOwnProperty.call(map, n)) return map[n];
+					}
+					for (const k of keys) {
+						if (names.includes(k.toLowerCase().trim())) return row[k];
+					}
+					return undefined;
+				}
 
-		const unidade = findVal(['unidade','unit','unit name','estabelecimento','estação','station']) || (Object.values(row)[0] || '');
-		const distribuidora = findVal(['distribuidora','distributor','fornecedor','supplier']) || (Object.values(row)[1] || '');
-		const produto = findVal(['produto','product','produto/serviço','material']) || (Object.values(row)[2] || '');
-		const volume = findVal(['volume','vol','quantidade','qtd','volume (m)','volume m']) || (Object.values(row)[3] || '0');
-		const valor = findVal(['valor','price','preco','preço','valor por litro','valor litro','valor/l','valor_l','valor unitario','valor unitário','preco unitario','preço unitário','valor_litro']) || (Object.values(row)[4] || '0');
+				const unidade = findVal(['unidade','unit','unit name','estabelecimento','estação','station']) || (Object.values(row)[0] || '');
+				const distribuidora = findVal(['distribuidora','distributor','fornecedor','supplier']) || (Object.values(row)[1] || '');
+				const produto = findVal(['produto','product','produto/serviço','material']) || (Object.values(row)[2] || '');
+				const volume = findVal(['volume','vol','quantidade','qtd','volume (m)','volume m']) || (Object.values(row)[3] || '0');
+				const valor = findVal(['valor','price','preco','preço','valor por litro','valor litro','valor/l','valor_l','valor unitario','valor unitário','preco unitario','preço unitário','valor_litro']) || (Object.values(row)[4] || '0');
 				if (String(volume).trim() === '' || String(valor).trim() === '') return;
 
-				adicionarCargaComDados(String(unidade), String(distribuidora), String(produto), String(volume), String(valor));
+				adicionarCargaComDados(String(unidade), '', '', String(distribuidora), String(produto), String(volume), String(valor));
 			});
-
 		} catch (err) {
 			console.error(err);
 			alert('Erro ao ler a planilha: ' + err.message);
@@ -344,22 +480,51 @@ function importarPlanilha() {
 	reader.readAsArrayBuffer(file);
 }
 
-function applyFilters() {
-	const fu = document.getElementById('filterUnidade').value || '';
-	const fd = document.getElementById('filterDistribuidora').value || '';
-	const fp = document.getElementById('filterProduto').value || '';
-	activeFilters.unidade = fu;
-	activeFilters.distribuidora = fd;
-	activeFilters.produto = fp;
-	renderTable();
+function exportBackup() {
+	const state = {
+		entries,
+		boletos,
+		entryIdCounter,
+		activeFilters
+	};
+	const json = JSON.stringify(state, null, 2);
+	const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = 'wk_compras_backup.json';
+	a.click();
+	URL.revokeObjectURL(url);
 }
 
-function clearFilters() {
-	document.getElementById('filterUnidade').value = '';
-	document.getElementById('filterDistribuidora').value = '';
-	document.getElementById('filterProduto').value = '';
-	activeFilters = { unidade: '', distribuidora: '', produto: '' };
-	renderTable();
+function handleBackupImport(input) {
+	if (!input.files || input.files.length === 0) return;
+	const file = input.files[0];
+	const reader = new FileReader();
+	reader.onload = function(e) {
+		try {
+			const state = JSON.parse(e.target.result);
+			if (state && Array.isArray(state.entries) && Array.isArray(state.boletos)) {
+				entries = state.entries.map(entry => ({ etiqueta: '', ...entry }));
+				boletos = state.boletos.map(boleto => ({ etiqueta: '', ...boleto }));
+				entryIdCounter = typeof state.entryIdCounter === 'number' && state.entryIdCounter > 0 ? state.entryIdCounter : entryIdCounter;
+				activeFilters = state.activeFilters || activeFilters;
+				if (document.getElementById('filterUnidade')) document.getElementById('filterUnidade').value = activeFilters.unidade || '';
+				if (document.getElementById('filterDistribuidora')) document.getElementById('filterDistribuidora').value = activeFilters.distribuidora || '';
+				if (document.getElementById('filterProduto')) document.getElementById('filterProduto').value = activeFilters.produto || '';
+				renderTable();
+				renderTabelaBoleto();
+				alert('Backup restaurado com sucesso.');
+			} else {
+				alert('Arquivo de backup inválido.');
+			}
+		} catch (err) {
+			console.error(err);
+			alert('Erro ao restaurar backup: ' + err.message);
+		}
+	};
+	reader.readAsText(file);
+	input.value = '';
 }
 
 function getVisibleEntries() {
@@ -368,9 +533,9 @@ function getVisibleEntries() {
 	const fProd = (activeFilters.produto || '').toLowerCase().trim();
 	return entries.filter(entry => {
 		if (entry.removed) return false;
-		if (fUnidade && !entry.unidade.toLowerCase().includes(fUnidade)) return false;
-		if (fDistrib && !entry.distribuidora.toLowerCase().includes(fDistrib)) return false;
-		if (fProd && fProd !== '' && !entry.produto.toLowerCase().includes(fProd)) return false;
+		if (fUnidade && !String(entry.unidade || '').toLowerCase().includes(fUnidade)) return false;
+		if (fDistrib && !String(entry.distribuidora || '').toLowerCase().includes(fDistrib)) return false;
+		if (!produtoFiltra(entry.produto, fProd)) return false;
 		return true;
 	});
 }
@@ -430,6 +595,9 @@ function moverParaBoleto(id) {
 	boletos.push({
 		id: entry.id,
 		unidade: entry.unidade,
+		etiqueta: entry.etiqueta || '',
+		data: entry.data || '',
+		selected: false,
 		distribuidora: entry.distribuidora,
 		produto: entry.produto,
 		volumeNorm: entry.volumeNorm,
@@ -452,11 +620,30 @@ function renderTabelaBoleto() {
 	
 	tbody.innerHTML = '';
 	let totalBoleto = '0';
+	const fUnidade = (boletoFilters.unidade || '').toLowerCase().trim();
+	const fDistrib = (boletoFilters.distribuidora || '').toLowerCase().trim();
+	const fProd = (boletoFilters.produto || '').toLowerCase().trim();
+	let visibleCount = 0;
 	
 	boletos.forEach(boleto => {
+		if (fUnidade && !String(boleto.unidade || '').toLowerCase().includes(fUnidade)) return;
+		if (fDistrib && !String(boleto.distribuidora || '').toLowerCase().includes(fDistrib)) return;
+		if (!produtoFiltra(boleto.produto, fProd)) return;
+		visibleCount += 1;
 		const row = tbody.insertRow();
 		row.innerHTML = `
+			<td><input type="checkbox" data-boleto-id="${boleto.id}" onchange="toggleSelectBoleto('${boleto.id}', this.checked)" ${boleto.selected ? 'checked' : ''}></td>
 			<td>${boleto.unidade}</td>
+			<td>
+				<select onchange="setBoletoLabel('${boleto.id}', this.value)">
+					<option value="" ${boleto.etiqueta === '' ? 'selected' : ''}>Nenhuma</option>
+					<option value="Hoje" ${boleto.etiqueta === 'Hoje' ? 'selected' : ''}>Hoje</option>
+					<option value="Ontem" ${boleto.etiqueta === 'Ontem' ? 'selected' : ''}>Ontem</option>
+					<option value="Antes de Ontem" ${boleto.etiqueta === 'Antes de Ontem' ? 'selected' : ''}>Antes de Ontem</option>
+					<option value="Amanhã" ${boleto.etiqueta === 'Amanhã' ? 'selected' : ''}>Amanhã</option>
+				</select>
+			</td>
+			<td>${boleto.data || ''}</td>
 			<td>${boleto.distribuidora}</td>
 			<td>${boleto.produto}</td>
 			<td>${boleto.volumeNorm}</td>
@@ -465,10 +652,10 @@ function renderTabelaBoleto() {
 			<td>${formatarMoedaFromDecimalString(boleto.totalStr)}</td>
 			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#06b6d4;" onclick="desfazerBoleto('${boleto.id}')">Desfazer</button><button class="delete-btn" onclick="removerBoleto('${boleto.id}')">Excluir</button></td>
 		`;
-		totalBoleto = addDecimalStrings(totalBoleto, boleto.totalStr);
+			totalBoleto = addDecimalStrings(totalBoleto, boleto.totalStr);
 	});
-	
-	if (boletos.length === 0) {
+
+	if (visibleCount === 0) {
 		msgVazia.style.display = 'block';
 		totalBox.style.display = 'none';
 	} else {
@@ -476,7 +663,45 @@ function renderTabelaBoleto() {
 		totalBox.style.display = 'block';
 		document.getElementById('totalBoleto').innerText = formatarMoedaFromDecimalString(totalBoleto);
 	}
-	
+
+	saveState();
+}
+
+function toggleSelectBoleto(id, checked) {
+	const boleto = boletos.find(b => String(b.id) === String(id));
+	if (!boleto) return;
+	boleto.selected = Boolean(checked);
+	saveState();
+	renderTabelaBoleto();
+}
+
+function toggleSelectAllBoleto(checkbox) {
+	const checked = Boolean(checkbox.checked);
+	const fUnidade = (boletoFilters.unidade || '').toLowerCase().trim();
+	const fDistrib = (boletoFilters.distribuidora || '').toLowerCase().trim();
+	const fProd = (boletoFilters.produto || '').toLowerCase().trim();
+	boletos.forEach(boleto => {
+		if (fUnidade && !String(boleto.unidade || '').toLowerCase().includes(fUnidade)) return;
+		if (fDistrib && !String(boleto.distribuidora || '').toLowerCase().includes(fDistrib)) return;
+		if (!produtoFiltra(boleto.produto, fProd)) return;
+		boleto.selected = checked;
+	});
+	saveState();
+	renderTabelaBoleto();
+}
+
+function clearBoletoSelection() {
+	boletos.forEach(b => b.selected = false);
+	const chk = document.getElementById('selectAllBoletoCheckbox'); if (chk) chk.checked = false;
+	saveState();
+	renderTabelaBoleto();
+}
+
+
+function setBoletoLabel(id, label) {
+	const boleto = boletos.find(b => String(b.id) === String(id));
+	if (!boleto) return;
+	boleto.etiqueta = String(label || '');
 	saveState();
 }
 
@@ -509,28 +734,33 @@ function removerBoleto(id) {
 	renderTabelaBoleto();
 }
 
-function exportBoletoToCsv() {
-	if (boletos.length === 0) { alert('Não há cargas no boleto para exportar.'); return; }
-	
+function getBoletoExportRows() {
 	const groups = {};
 	boletos.forEach(boleto => {
-		const key = `${boleto.distribuidora}|||${boleto.unidade}`;
+		const key = `${String(boleto.distribuidora || '').trim().toLowerCase()}|||${String(boleto.unidade || '').trim().toLowerCase()}`;
 		if (!groups[key]) {
 			groups[key] = {
-				Distribuidora: boleto.distribuidora,
-				Unidade: boleto.unidade,
+				Distribuidora: boleto.distribuidora || '',
+				Unidade: boleto.unidade || '',
 				Total: '0'
 			};
 		}
-		groups[key].Total = addDecimalStrings(groups[key].Total, boleto.totalStr);
+		groups[key].Total = addDecimalStrings(groups[key].Total, boleto.totalStr || '0');
 	});
-	
-	const rows = Object.values(groups).map(group => ({
-		Unidade: group.Unidade,
+
+	return Object.values(groups).map(group => ({
 		Distribuidora: group.Distribuidora,
+		Unidade: group.Unidade,
 		Total: formatarMoedaFromDecimalString(group.Total)
 	}));
-	
+}
+
+function exportBoletoToCsv() {
+	if (boletos.length === 0) { alert('Não há cargas no boleto para exportar.'); return; }
+
+	const rows = getBoletoExportRows();
+	if (!rows.length) { alert('Não há dados para exportar.'); return; }
+
 	const header = ['Distribuidora','Unidade','Total'].join(';');
 	const csv = [header].concat(rows.map(row => [row.Distribuidora, row.Unidade, row.Total].map(value => '"' + String(value).replace(/"/g, '""') + '"').join(';'))).join('\r\n');
 	const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -545,20 +775,20 @@ function exportBoletoToCsv() {
 function exportBoletoToExcel() {
 	if (boletos.length === 0) { alert('Não há cargas no boleto para exportar.'); return; }
 	
-	const rows = boletos.map(boleto => ({
-		Unidade: boleto.unidade,
-		Distribuidora: boleto.distribuidora,
-		Produto: boleto.produto,
-		'Volume (m)': boleto.volumeNorm,
-		Litros: formatNumberFromDecimalString(boleto.litrosStr),
-		'Valor/L': formatarMoedaFromDecimalString(boleto.valorNorm),
-		Total: formatarMoedaFromDecimalString(boleto.totalStr)
-	}));
+	const rows = getBoletoExportRows();
+	if (!rows.length) { alert('Não há dados para exportar.'); return; }
 	
 	const worksheet = XLSX.utils.json_to_sheet(rows);
 	const workbook = XLSX.utils.book_new();
 	XLSX.utils.book_append_sheet(workbook, worksheet, 'WK Boletos');
 	XLSX.writeFile(workbook, 'wk_boletos_export.xlsx');
 }
+
+window.addEventListener('beforeunload', function (event) {
+	if (entries.length > 0 || boletos.length > 0) {
+		event.preventDefault();
+		event.returnValue = '';
+	}
+});
 
 window.addEventListener('load', loadState);
