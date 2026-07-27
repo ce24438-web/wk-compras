@@ -1,6 +1,7 @@
 let totalGeral = '0'; // armazenado como string decimal exata
 let entries = [];
 let boletos = []; // novo array para cargas no boleto
+let resumoVolumeRows = [];
 let entryIdCounter = 1;
 let activeFilters = { unidade: '', distribuidora: '', produto: '' };
 let boletoFilters = { unidade: '', distribuidora: '', produto: '' };
@@ -9,6 +10,7 @@ function saveState() {
 	const state = {
 		entries,
 		boletos,
+		resumoVolumeRows,
 		entryIdCounter,
 		activeFilters,
 		boletoFilters
@@ -23,6 +25,7 @@ function loadState() {
 		const state = JSON.parse(raw);
 		if (Array.isArray(state.entries)) entries = state.entries.map(entry => ({ etiqueta: '', ...entry }));
 		if (Array.isArray(state.boletos)) boletos = state.boletos.map(boleto => ({ etiqueta: '', selected: Boolean(boleto.selected), ...boleto }));
+		if (Array.isArray(state.resumoVolumeRows)) resumoVolumeRows = state.resumoVolumeRows.map(row => ({ unidade: '', produto: '', total: '0', ...row }));
 		entryIdCounter = typeof state.entryIdCounter === 'number' && state.entryIdCounter > 0 ? state.entryIdCounter : entryIdCounter;
 		activeFilters = state.activeFilters || activeFilters;
 		boletoFilters = state.boletoFilters || boletoFilters;
@@ -34,6 +37,7 @@ function loadState() {
 		if (document.getElementById('filterBoletoProduto')) document.getElementById('filterBoletoProduto').value = boletoFilters.produto || '';
 		renderTable();
 		renderTabelaBoleto();
+		renderResumoVolumeTable();
 	} catch (err) {
 		console.warn('Não foi possível carregar estado salvo:', err);
 	}
@@ -323,6 +327,7 @@ function renderTable() {
 	});
 
 	document.getElementById('totalGeral').innerText = formatarMoedaFromDecimalString(totalVisible);
+	renderVolumeSummary();
 	saveState();
 }
 
@@ -447,7 +452,6 @@ function importarPlanilha() {
 			const sheet = workbook.Sheets[firstSheet];
 			const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
-			// process rows
 			json.forEach((row) => {
 				const keys = Object.keys(row);
 				const map = {};
@@ -478,6 +482,120 @@ function importarPlanilha() {
 		}
 	};
 	reader.readAsArrayBuffer(file);
+}
+
+function importarResumoVolume() {
+	const input = document.getElementById('fileInputResumo');
+	if (!input || !input.files || input.files.length === 0) { alert('Escolha um arquivo de resumo primeiro.'); return; }
+	const file = input.files[0];
+	const reader = new FileReader();
+	reader.onload = function(e) {
+		try {
+			const data = new Uint8Array(e.target.result);
+			const workbook = XLSX.read(data, { type: 'array' });
+			const firstSheet = workbook.SheetNames[0];
+			const sheet = workbook.Sheets[firstSheet];
+			const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+			resumoVolumeRows = [];
+			json.forEach((row) => {
+				const keys = Object.keys(row);
+				const map = {};
+				keys.forEach(k => { map[k.toLowerCase().trim()] = row[k]; });
+
+				function findVal(names) {
+					for (const n of names) {
+						if (Object.prototype.hasOwnProperty.call(map, n)) return map[n];
+					}
+					for (const k of keys) {
+						if (names.includes(k.toLowerCase().trim())) return row[k];
+					}
+					return undefined;
+				}
+
+				const unidade = findVal(['unidade','unit','station','estabelecimento','estação']) || (Object.values(row)[0] || '');
+				const produto = findVal(['produto','product','produto/serviço','material']) || (Object.values(row)[1] || '');
+				const total = findVal(['total','valor','volume','qtd','quantidade']) || (Object.values(row)[2] || '0');
+				if (!String(unidade).trim() || !String(produto).trim() || String(total).trim() === '') return;
+
+				resumoVolumeRows.push({
+					unidade: String(unidade).trim(),
+					produto: String(produto).trim(),
+					total: _normalizeDecimalString(String(total))
+				});
+			});
+
+			renderResumoVolumeTable();
+			saveState();
+		} catch (err) {
+			console.error(err);
+			alert('Erro ao ler o resumo: ' + err.message);
+		}
+	};
+	reader.readAsArrayBuffer(file);
+}
+
+function renderResumoVolumeTable() {
+	const table = document.querySelector('#tabelaResumoVolume');
+	if (!table) {
+		renderVolumeSummary();
+		return;
+	}
+
+	const tbody = table.querySelector('tbody');
+	tbody.innerHTML = '';
+	if (!resumoVolumeRows.length) {
+		const row = tbody.insertRow();
+		row.innerHTML = '<td colspan="3" style="text-align:center; color: var(--muted);">Nenhum resumo importado ainda.</td>';
+		return;
+	}
+
+	resumoVolumeRows.forEach((item, index) => {
+		const row = tbody.insertRow();
+		row.innerHTML = `
+			<td>${item.unidade}</td>
+			<td>${item.produto}</td>
+			<td>${formatNumberFromDecimalString(item.total)}</td>
+		`;
+	});
+}
+
+function exportResumoVolumeImportToCsv() {
+	if (!resumoVolumeRows.length) { alert('Não há resumo importado para exportar.'); return; }
+	const header = ['Unidade','Produto','Total'].join(';');
+	const csv = [header].concat(resumoVolumeRows.map(item => [
+		item.unidade,
+		item.produto,
+		formatNumberFromDecimalString(item.total)
+	].map(value => '"' + String(value).replace(/"/g, '""') + '"').join(';'))).join('\r\n');
+	const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = 'wk_compras_resumo_volume_import.csv';
+	a.click();
+	URL.revokeObjectURL(url);
+}
+
+function exportResumoVolumeImportToExcel() {
+	if (!resumoVolumeRows.length) { alert('Não há resumo importado para exportar.'); return; }
+	const worksheetRows = resumoVolumeRows.map(item => ({
+		Unidade: item.unidade,
+		Produto: item.produto,
+		Total: formatNumberFromDecimalString(item.total)
+	}));
+	const worksheet = XLSX.utils.json_to_sheet(worksheetRows);
+	const workbook = XLSX.utils.book_new();
+	XLSX.utils.book_append_sheet(workbook, worksheet, 'Resumo Volume Import');
+	XLSX.writeFile(workbook, 'wk_compras_resumo_volume_import.xlsx');
+}
+
+function limparResumoVolume() {
+	resumoVolumeRows = [];
+	const fileInput = document.getElementById('fileInputResumo');
+	if (fileInput) fileInput.value = '';
+	renderVolumeSummary();
+	saveState();
 }
 
 function exportBackup() {
@@ -782,6 +900,122 @@ function exportBoletoToExcel() {
 	const workbook = XLSX.utils.book_new();
 	XLSX.utils.book_append_sheet(workbook, worksheet, 'WK Boletos');
 	XLSX.writeFile(workbook, 'wk_boletos_export.xlsx');
+}
+
+function _normalizeProductForResumo(produto) {
+	const cleaned = String(produto || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+	if (['gc','gasolinacomum','gasolinacommum','gc - gasolinacomum'].includes(cleaned)) return 'GC';
+	if (['gad','gasolinaaditivada','gasolina aditivada','gad - gasolinaaditivada'].includes(cleaned)) return 'GAD';
+	if (['etanol','etânol','etanol-'].includes(cleaned)) return 'ETANOL';
+	if (['s500','s-500','s 500'].includes(cleaned)) return 'S-500';
+	if (['s10','s-10','s 10'].includes(cleaned)) return 'S-10';
+	return 'OUTRO';
+}
+
+function getVolumeSummaryRows() {
+	const groups = {};
+	const productKeys = ['GC', 'GAD', 'ETANOL', 'S-500', 'S-10'];
+
+	resumoVolumeRows.forEach(entry => {
+		const unidade = String(entry.unidade || 'Sem Unidade').trim();
+		const productKey = _normalizeProductForResumo(entry.produto);
+		if (!groups[unidade]) {
+			groups[unidade] = { Unidade: unidade, GC: '0', GAD: '0', ETANOL: '0', 'S-500': '0', 'S-10': '0', Total: '0' };
+		}
+		const amount = String(entry.total || '0');
+		if (productKeys.includes(productKey)) {
+			groups[unidade][productKey] = addDecimalStrings(groups[unidade][productKey], amount);
+		} else {
+			groups[unidade]['GC'] = addDecimalStrings(groups[unidade]['GC'], amount);
+		}
+		groups[unidade].Total = addDecimalStrings(groups[unidade].Total, amount);
+	});
+
+	return Object.values(groups).sort((a, b) => a.Unidade.localeCompare(b.Unidade, 'pt-BR', { numeric: true }));
+}
+
+function renderVolumeSummary() {
+	const tbody = document.querySelector('#resumoTabela tbody');
+	const rows = getVolumeSummaryRows();
+	tbody.innerHTML = '';
+	let totalGC = '0';
+	let totalGAD = '0';
+	let totalETANOL = '0';
+	let totalS500 = '0';
+	let totalS10 = '0';
+	let totalGeral = '0';
+
+	if (!rows.length) {
+		const row = tbody.insertRow();
+		row.innerHTML = '<td colspan="7" style="text-align:center; color: var(--muted);">Nenhuma carga disponível para gerar o resumo.</td>';
+	} else {
+		rows.forEach(item => {
+			const row = tbody.insertRow();
+			row.innerHTML = `
+				<td>${item.Unidade}</td>
+				<td>${formatNumberFromDecimalString(item.GC)}</td>
+				<td>${formatNumberFromDecimalString(item.GAD)}</td>
+				<td>${formatNumberFromDecimalString(item.ETANOL)}</td>
+				<td>${formatNumberFromDecimalString(item['S-500'])}</td>
+				<td>${formatNumberFromDecimalString(item['S-10'])}</td>
+				<td>${formatNumberFromDecimalString(item.Total)}</td>
+			`;
+
+			totalGC = addDecimalStrings(totalGC, item.GC);
+			totalGAD = addDecimalStrings(totalGAD, item.GAD);
+			totalETANOL = addDecimalStrings(totalETANOL, item.ETANOL);
+			totalS500 = addDecimalStrings(totalS500, item['S-500']);
+			totalS10 = addDecimalStrings(totalS10, item['S-10']);
+			totalGeral = addDecimalStrings(totalGeral, item.Total);
+		});
+	}
+
+	document.getElementById('resumoTotalGC').innerText = formatNumberFromDecimalString(totalGC);
+	document.getElementById('resumoTotalGAD').innerText = formatNumberFromDecimalString(totalGAD);
+	document.getElementById('resumoTotalETANOL').innerText = formatNumberFromDecimalString(totalETANOL);
+	document.getElementById('resumoTotalS500').innerText = formatNumberFromDecimalString(totalS500);
+	document.getElementById('resumoTotalS10').innerText = formatNumberFromDecimalString(totalS10);
+	document.getElementById('resumoTotalGeralResumo').innerText = formatNumberFromDecimalString(totalGeral);
+}
+
+function exportVolumeResumoToCsv() {
+	const rows = getVolumeSummaryRows();
+	if (!rows.length) { alert('Não há dados para exportar.'); return; }
+	const header = ['Unidade','Gasolina Comum','Gasolina Aditivada','Etanol','S-500','S-10','Total'].join(';');
+	const csv = [header].concat(rows.map(item => [
+		item.Unidade,
+		formatNumberFromDecimalString(item.GC),
+		formatNumberFromDecimalString(item.GAD),
+		formatNumberFromDecimalString(item.ETANOL),
+		formatNumberFromDecimalString(item['S-500']),
+		formatNumberFromDecimalString(item['S-10']),
+		formatNumberFromDecimalString(item.Total)
+	].map(value => '"' + String(value).replace(/"/g, '""') + '"').join(';'))).join('\r\n');
+	const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = 'wk_compras_resumo_volume.csv';
+	a.click();
+	URL.revokeObjectURL(url);
+}
+
+function exportVolumeResumoToExcel() {
+	const rows = getVolumeSummaryRows();
+	if (!rows.length) { alert('Não há dados para exportar.'); return; }
+	const worksheetRows = rows.map(item => ({
+		Unidade: item.Unidade,
+		'Gasolina Comum': formatNumberFromDecimalString(item.GC),
+		'Gasolina Aditivada': formatNumberFromDecimalString(item.GAD),
+		Etanol: formatNumberFromDecimalString(item.ETANOL),
+		'S-500': formatNumberFromDecimalString(item['S-500']),
+		'S-10': formatNumberFromDecimalString(item['S-10']),
+		Total: formatNumberFromDecimalString(item.Total)
+	}));
+	const worksheet = XLSX.utils.json_to_sheet(worksheetRows);
+	const workbook = XLSX.utils.book_new();
+	XLSX.utils.book_append_sheet(workbook, worksheet, 'Resumo Volume');
+	XLSX.writeFile(workbook, 'wk_compras_resumo_volume.xlsx');
 }
 
 window.addEventListener('beforeunload', function (event) {

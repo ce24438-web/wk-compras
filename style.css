@@ -125,6 +125,15 @@ th {
 	font-weight: 700;
 }
 
+.resumo-importado-card table th {
+	background: linear-gradient(90deg, #1d4ed8, #9333ea);
+	color: white;
+}
+
+.resumo-importado-card {
+	border-left-color: #1d4ed8;
+}
+
 tbody tr:hover {
 	background: rgba(11, 97, 216, 0.05);
 }

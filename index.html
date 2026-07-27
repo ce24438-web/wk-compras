@@ -67,11 +67,48 @@
     <button onclick="adicionarCarga()">Adicionar Carga</button>
   </div>
 
-  <div class="card">
-    <label>Importar planilha (.xlsx / .csv)</label>
-    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
-    <button onclick="importarPlanilha()">Importar Planilha</button>
-    <div class="muted">A planilha deve ter colunas: Unidade, Distribuidora, Produto, Volume, Valor (cabecalhos em qualquer idioma/case serão reconhecidos).</div>
+  <div class="card resumo-importado-card">
+    <h2 style="margin-top:0; color: var(--brand-blue-800);">Resumo importado de volume por unidade</h2>
+    <div class="muted">Importe aqui apenas o resumo em formato Unidade / Produto / Total.</div>
+    <div style="margin-top:16px;">
+      <strong>Importação do quadro:</strong>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+        <input type="file" id="fileInputResumo" accept=".xlsx,.xls,.csv" />
+        <button onclick="importarResumoVolume()">Importar Resumo de Volume</button>
+      </div>
+      <div class="muted" style="margin-top:8px;">A planilha deve ter colunas: Unidade, Produto, Total. Este import é independente e não altera as cargas do sistema.</div>
+    </div>
+    <table id="resumoTabela" style="margin-top:16px;">
+      <thead>
+        <tr>
+          <th>Unidade</th>
+          <th>Gasolina Comum</th>
+          <th>Gasolina Aditivada</th>
+          <th>Etanol</th>
+          <th>S-500</th>
+          <th>S-10</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr>
+          <td style="font-weight:700;">TOTAL</td>
+          <td id="resumoTotalGC">0</td>
+          <td id="resumoTotalGAD">0</td>
+          <td id="resumoTotalETANOL">0</td>
+          <td id="resumoTotalS500">0</td>
+          <td id="resumoTotalS10">0</td>
+          <td id="resumoTotalGeralResumo">0</td>
+        </tr>
+      </tfoot>
+    </table>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;">
+      <button onclick="renderVolumeSummary()">Atualizar Resumo</button>
+      <button onclick="exportVolumeResumoToCsv()" style="background:#10b981;">Exportar CSV</button>
+      <button onclick="exportVolumeResumoToExcel()" style="background:#2563eb;">Exportar Excel</button>
+      <button onclick="limparResumoVolume()" style="background:#ef4444;">Limpar Resumo</button>
+    </div>
   </div>
 
   <div class="card">
@@ -86,6 +123,14 @@
 
 
   <div class="card">
+    <div style="margin-bottom:16px;">
+      <h2 style="margin-top:0; color: var(--brand-blue-800);">Cargas e importação principal</h2>
+      <div class="muted">Importe aqui suas cargas de Unidade / Distribuidora / Produto / Volume / Valor.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+        <button onclick="importarPlanilha()">Importar Planilha</button>
+      </div>
+    </div>
     <div class="filters">
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:12px;">
         <div style="flex:1;min-width:180px;">
