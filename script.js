@@ -5,6 +5,149 @@ let resumoVolumeRows = [];
 let entryIdCounter = 1;
 let activeFilters = { unidade: '', distribuidora: '', produto: '' };
 let boletoFilters = { unidade: '', distribuidora: '', produto: '' };
+let distribChart = null;
+
+// ===== FUNÇÕES DE NAVEGAÇÃO POR ABAS =====
+function switchTab(tabId) {
+	// Ocultar todas as abas
+	const allTabs = document.querySelectorAll('.tab-content');
+	allTabs.forEach(tab => tab.classList.remove('active'));
+
+	// Remover classe ativa de todos os botões
+	const allButtons = document.querySelectorAll('.tab-button');
+	allButtons.forEach(btn => btn.classList.remove('active'));
+
+	// Mostrar a aba selecionada
+	const selectedTab = document.getElementById(tabId);
+	if (selectedTab) {
+		selectedTab.classList.add('active');
+	}
+
+	// Marcar o botão como ativo
+	event.target.closest('.tab-button').classList.add('active');
+}
+
+// ===== FUNÇÕES DE CONTROLE DO MENU LATERAL =====
+function toggleSidebar() {
+	const sidebar = document.getElementById('sidebar');
+	const toggle = document.querySelector('.sidebar-toggle');
+	const overlay = document.getElementById('sidebarOverlay');
+
+	if (sidebar && toggle) {
+		const isClosed = sidebar.classList.contains('closed');
+
+		if (isClosed) {
+			sidebar.classList.remove('closed');
+			toggle.classList.add('active');
+			if (overlay) overlay.classList.add('active');
+			localStorage.setItem('sidebarState', 'open');
+		} else {
+			sidebar.classList.add('closed');
+			toggle.classList.remove('active');
+			if (overlay) overlay.classList.remove('active');
+			localStorage.setItem('sidebarState', 'closed');
+		}
+	}
+}
+
+// Restaurar estado do sidebar ao carregar a página
+window.addEventListener('DOMContentLoaded', function() {
+	const sidebarState = localStorage.getItem('sidebarState') || 'open';
+	const sidebar = document.getElementById('sidebar');
+	const toggle = document.querySelector('.sidebar-toggle');
+	const overlay = document.getElementById('sidebarOverlay');
+
+	if (sidebarState === 'closed') {
+		if (sidebar) sidebar.classList.add('closed');
+		if (toggle) toggle.classList.remove('active');
+		if (overlay) overlay.classList.remove('active');
+	} else {
+		if (sidebar) sidebar.classList.remove('closed');
+		if (toggle) toggle.classList.add('active');
+		if (overlay) overlay.classList.add('active');
+	}
+});
+
+function openDistribuidorPanel() {
+	const panel = document.getElementById('distribPanel');
+	if (!panel) return;
+	panel.style.display = 'flex';
+	renderDistribuidorChart();
+}
+
+function closeDistribuidorPanel() {
+	const panel = document.getElementById('distribPanel');
+	if (!panel) return;
+	panel.style.display = 'none';
+}
+
+function renderDistribuidorChart() {
+	// agrupa os totais por distribuidora (somente entradas não removidas)
+	const groups = {};
+	entries.forEach(entry => {
+		if (entry.removed) return;
+		const key = String(entry.distribuidora || 'Sem Distribuidora').trim();
+		if (!groups[key]) groups[key] = '0';
+		groups[key] = addDecimalStrings(groups[key], entry.totalStr || '0');
+	});
+
+	const labels = Object.keys(groups);
+	const dataValues = labels.map(l => {
+		const v = groups[l] || '0';
+		return parseFloat(String(v)) || 0;
+	});
+
+	const ctx = document.getElementById('distribChart').getContext('2d');
+
+	if (distribChart) {
+		distribChart.data.labels = labels;
+		distribChart.data.datasets[0].data = dataValues;
+		distribChart.update();
+		return;
+	}
+
+	const colors = labels.map((_, i) => {
+		const base = ["#2563eb","#9333ea","#10b981","#f59e0b","#ef4444","#06b6d4","#7c3aed"];
+		return base[i % base.length];
+	});
+
+	distribChart = new Chart(ctx, {
+		type: 'bar',
+		data: {
+			labels: labels,
+			datasets: [{
+				label: 'Total (R$)',
+				data: dataValues,
+				backgroundColor: colors,
+				borderRadius: 6,
+				barPercentage: 0.6
+			}]
+		},
+		options: {
+			responsive: true,
+			maintainAspectRatio: false,
+			scales: {
+				y: {
+					beginAtZero: true,
+					ticks: {
+						callback: function(value) { return 'R$ ' + Number(value).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+					}
+				}
+			},
+			plugins: {
+				tooltip: {
+					callbacks: {
+						label: function(context) {
+							const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
+							return 'R$ ' + Number(val).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+						}
+					}
+				},
+				legend: { display: false }
+			}
+		}
+	});
+}
 
 function saveState() {
 	const state = {
@@ -93,6 +236,35 @@ function produtoFiltra(entryProduto, filtroProduto) {
 	return entryNorm.includes(filtroNorm);
 }
 
+function _normalizeDecimalString(s) {
+	if (s === null || s === undefined) return '0';
+	s = String(s).trim();
+	if (s === '') return '0';
+	// remove currency symbols and letters
+	s = s.replace(/[R$£€¥₹]|[a-zA-Z]+/g, '');
+	// keep only digits, separators and sign
+	s = s.replace(/[^0-9+\-.,]/g, '');
+	if (s === '') return '0';
+	// treat comma as decimal separator
+	if (s.indexOf(',') !== -1) {
+		s = s.replace(/,/g, '.');
+	}
+	const dots = (s.match(/\./g) || []).length;
+	if (dots > 1) {
+		const lastIndex = s.lastIndexOf('.');
+		const intPart = s.slice(0, lastIndex).replace(/\./g, '');
+		s = intPart + '.' + s.slice(lastIndex + 1);
+	}
+	if (!/^[+-]?\d*(?:\.\d*)?$/.test(s)) return '0';
+	let sign = '';
+	if (s[0] === '+') s = s.slice(1);
+	if (s[0] === '-') { sign = '-'; s = s.slice(1); }
+	s = s.replace(/^0+(?=\d|\.)/, '');
+	if (s[0] === '.') s = '0' + s;
+	if (s === '') s = '0';
+	return sign + s;
+}
+
 function applyBulkValor() {
 	const v = document.getElementById('bulkValor').value || '';
 	const novo = _normalizeDecimalString(v);
@@ -118,59 +290,33 @@ function applyFilters() {
 	renderTable();
 }
 
-function applyBoletoFilters() {
-	boletoFilters.unidade = document.getElementById('filterBoletoUnidade').value || '';
-	boletoFilters.distribuidora = document.getElementById('filterBoletoDistribuidora').value || '';
-	boletoFilters.produto = document.getElementById('filterBoletoProduto').value || '';
-	renderTabelaBoleto();
-}
-
-function clearBoletoFilters() {
-	boletoFilters = { unidade: '', distribuidora: '', produto: '' };
-	if (document.getElementById('filterBoletoUnidade')) document.getElementById('filterBoletoUnidade').value = '';
-	if (document.getElementById('filterBoletoDistribuidora')) document.getElementById('filterBoletoDistribuidora').value = '';
-	if (document.getElementById('filterBoletoProduto')) document.getElementById('filterBoletoProduto').value = '';
-	renderTabelaBoleto();
-}
-
 function clearFilters() {
 	activeFilters = { unidade: '', distribuidora: '', produto: '' };
-	if (document.getElementById('filterUnidade')) document.getElementById('filterUnidade').value = '';
-	if (document.getElementById('filterDistribuidora')) document.getElementById('filterDistribuidora').value = '';
-	if (document.getElementById('filterProduto')) document.getElementById('filterProduto').value = '';
+	const fu = document.getElementById('filterUnidade');
+	const fd = document.getElementById('filterDistribuidora');
+	const fp = document.getElementById('filterProduto');
+	if (fu) fu.value = '';
+	if (fd) fd.value = '';
+	if (fp) {
+		try { fp.selectedIndex = 0; } catch (e) { fp.value = ''; }
+	}
 	renderTable();
+	saveState();
+	console.log('clearFilters: filters cleared');
 }
 
-function _normalizeDecimalString(s) {
-	if (s === null || s === undefined) return '0';
-	s = String(s).trim();
-	if (s === '') return '0';
-	// remove currency symbols and text
-	s = s.replace(/[R$£€¥₹]|[a-zA-Z]+/g, '');
-	// keep only digits, separators and sign
-	s = s.replace(/[^0-9+\-.,]/g, '');
-	if (s === '') return '0';
-	// treat comma as decimal separator if there is no dot or if comma is last separator
-	if (s.indexOf(',') !== -1) {
-		// replace comma with dot, then normalize multiple dots
-		s = s.replace(/,/g, '.');
-	}
-	const dots = (s.match(/\./g) || []).length;
-	if (dots > 1) {
-		const lastIndex = s.lastIndexOf('.');
-		const intPart = s.slice(0, lastIndex).replace(/\./g, '');
-		s = intPart + '.' + s.slice(lastIndex + 1);
-	}
-	if (!/^[+-]?\d*(?:\.\d*)?$/.test(s)) return '0';
-	let sign = '';
-	if (s[0] === '+') s = s.slice(1);
-	if (s[0] === '-') { sign = '-'; s = s.slice(1); }
-	// remove leading zeros
-	s = s.replace(/^0+(?=\d|\.)/, '');
-	if (s[0] === '.') s = '0' + s;
-	if (s === '') s = '0';
-	return sign + s;
+function clearAllCargas() {
+	if (!confirm('Confirma apagar todas as cargas da aba principal? Esta ação não afeta o Boleto nem o Resumo de Volume.')) return;
+	// remove apenas as entradas principais (entries)
+	entries = [];
+	// Do not reset boletos, resumoVolumeRows or entryIdCounter to avoid id collisions on subsequent adds
+	renderTable();
+	saveState();
+	alert('Todas as cargas da aba principal foram removidas.');
+	console.log('clearAllCargas: entries cleared');
 }
+
+// (restored backup functions are below)
 
 function _splitIntScale(s) {
 	s = _normalizeDecimalString(s);
@@ -452,7 +598,11 @@ function importarPlanilha() {
 			const sheet = workbook.Sheets[firstSheet];
 			const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
-			json.forEach((row) => {
+			let added = 0;
+			let skipped = 0;
+			const sample = [];
+
+			json.forEach((row, rowIndex) => {
 				const keys = Object.keys(row);
 				const map = {};
 				keys.forEach(k => { map[k.toLowerCase().trim()] = row[k]; });
@@ -470,12 +620,58 @@ function importarPlanilha() {
 				const unidade = findVal(['unidade','unit','unit name','estabelecimento','estação','station']) || (Object.values(row)[0] || '');
 				const distribuidora = findVal(['distribuidora','distributor','fornecedor','supplier']) || (Object.values(row)[1] || '');
 				const produto = findVal(['produto','product','produto/serviço','material']) || (Object.values(row)[2] || '');
-				const volume = findVal(['volume','vol','quantidade','qtd','volume (m)','volume m']) || (Object.values(row)[3] || '0');
-				const valor = findVal(['valor','price','preco','preço','valor por litro','valor litro','valor/l','valor_l','valor unitario','valor unitário','preco unitario','preço unitário','valor_litro']) || (Object.values(row)[4] || '0');
-				if (String(volume).trim() === '' || String(valor).trim() === '') return;
+				let volume = findVal(['volume','vol','quantidade','qtd','volume (m)','volume m']);
+				let valor = findVal(['valor','price','preco','preço','valor por litro','valor litro','valor/l','valor_l','valor unitario','valor unitário','preco unitario','preço unitário','valor_litro']);
+
+				// Fallback: se não encontrou volume/valor por nome, tenta detectar colunas numéricas
+				function isNumericLike(v) {
+					if (v === null || v === undefined) return false;
+					const s = String(v).trim();
+					if (s === '') return false;
+					return /[0-9]/.test(s);
+				}
+
+				if ((volume === undefined || String(volume).trim() === '') || (valor === undefined || String(valor).trim() === '')) {
+					const vals = Object.values(row).map(v => String(v).trim());
+					const numericIdx = [];
+					vals.forEach((v, i) => { if (isNumericLike(v)) numericIdx.push(i); });
+					// se encontrar pelo menos 2 colunas numéricas, assume as duas últimas como volume e valor
+					if (numericIdx.length >= 2) {
+						const last = numericIdx[numericIdx.length-1];
+						const penult = numericIdx[numericIdx.length-2];
+						// heurística: se a última tem vírgula/decimal com duas casas, pode ser valor
+						valor = valor || vals[last];
+						volume = volume || vals[penult];
+					}
+				}
+
+				// se ainda estiver vazio, tenta colunas por posição padrão
+				volume = (volume !== undefined && volume !== null && String(volume).trim() !== '') ? volume : (Object.values(row)[3] || '');
+				valor = (valor !== undefined && valor !== null && String(valor).trim() !== '') ? valor : (Object.values(row)[4] || '');
+
+				if (String(volume).trim() === '' || String(valor).trim() === '') {
+					skipped++;
+					if (sample.length < 5) sample.push({ row: rowIndex+1, parsed: { unidade, distribuidora, produto, volume, valor }, raw: row });
+					return;
+				}
 
 				adicionarCargaComDados(String(unidade), '', '', String(distribuidora), String(produto), String(volume), String(valor));
+				added++;
 			});
+
+			console.log('Import finished. added=', added, 'skipped=', skipped);
+			console.log('entries length after import (preview 5):', entries.length, entries.slice(0,5));
+			// force a full render and save in case previous renders were skipped
+			renderTable();
+			saveState();
+			if (added === 0) {
+				let msg = 'Nenhuma linha importada.';
+				if (skipped > 0) msg += ' Linhas puladas: ' + skipped + '. Veja console para amostra.';
+				alert(msg);
+			} else {
+				alert('Importação concluída. Linhas adicionadas: ' + added + (skipped ? (', puladas: ' + skipped) : ''));
+			}
+			if (sample.length) console.warn('Amostra de linhas puladas:', sample);
 		} catch (err) {
 			console.error(err);
 			alert('Erro ao ler a planilha: ' + err.message);
@@ -731,6 +927,32 @@ function moverParaBoleto(id) {
 	renderTabelaBoleto();
 }
 
+function applyBoletoFilters() {
+	boletoFilters.unidade = document.getElementById('filterBoletoUnidade').value || '';
+	boletoFilters.distribuidora = document.getElementById('filterBoletoDistribuidora').value || '';
+	boletoFilters.produto = document.getElementById('filterBoletoProduto').value || '';
+	renderTabelaBoleto();
+	saveState();
+}
+
+function clearBoletoFilters() {
+	boletoFilters = { unidade: '', distribuidora: '', produto: '' };
+	const fu = document.getElementById('filterBoletoUnidade');
+	const fd = document.getElementById('filterBoletoDistribuidora');
+	const fp = document.getElementById('filterBoletoProduto');
+	if (fu) fu.value = '';
+	if (fd) fd.value = '';
+	if (fp) {
+		try { fp.selectedIndex = 0; } catch (e) { fp.value = ''; }
+	}
+	renderTabelaBoleto();
+	saveState();
+}
+
+function escapeHtmlAttr(value) {
+	return String(value ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function renderTabelaBoleto() {
 	const tbody = document.querySelector('#tabelaBoleto tbody');
 	const msgVazia = document.getElementById('mensagemVazia');
@@ -751,7 +973,7 @@ function renderTabelaBoleto() {
 		const row = tbody.insertRow();
 		row.innerHTML = `
 			<td><input type="checkbox" data-boleto-id="${boleto.id}" onchange="toggleSelectBoleto('${boleto.id}', this.checked)" ${boleto.selected ? 'checked' : ''}></td>
-			<td>${boleto.unidade}</td>
+			<td><input type="text" value="${escapeHtmlAttr(boleto.unidade)}" onchange="setBoletoUnidade('${boleto.id}', this.value)" style="width:100%;min-width:120px;"></td>
 			<td>
 				<select onchange="setBoletoLabel('${boleto.id}', this.value)">
 					<option value="" ${boleto.etiqueta === '' ? 'selected' : ''}>Nenhuma</option>
@@ -789,6 +1011,14 @@ function toggleSelectBoleto(id, checked) {
 	const boleto = boletos.find(b => String(b.id) === String(id));
 	if (!boleto) return;
 	boleto.selected = Boolean(checked);
+	saveState();
+	renderTabelaBoleto();
+}
+
+function setBoletoUnidade(id, unidade) {
+	const boleto = boletos.find(b => String(b.id) === String(id));
+	if (!boleto) return;
+	boleto.unidade = String(unidade || '').trim();
 	saveState();
 	renderTabelaBoleto();
 }
