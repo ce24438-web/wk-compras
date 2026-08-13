@@ -464,7 +464,7 @@ function renderTable() {
 			<td>${entry.produto}</td>
 			<td>${entry.volumeNorm}</td>
 			<td>${formatNumberFromDecimalString(entry.litrosStr)}</td>
-			<td>${formatarMoedaFromDecimalString(entry.valorNorm)}</td>
+			<td><input type="number" step="0.0001" value="${String(entry.valorNorm || '0')}" onchange="updateEntryValorById('${entry.id}', this.value)" style="width:90px;" /></td>
 			<td>${formatarMoedaFromDecimalString(entry.totalStr)}</td>
 			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#10b981;" onclick="moverParaBoleto('${entry.id}')">Boleto</button><button class="delete-btn" style="background:#f59e0b;" onclick="editValorById('${entry.id}')">Editar</button><button class="delete-btn" onclick="removerLinhaById('${entry.id}')">Excluir</button></td>
 		`;
@@ -498,6 +498,20 @@ function editValorById(id) {
 		entry.valorNorm = novo;
 		entry.totalStr = multiplyDecimalStrings(entry.litrosStr, entry.valorNorm);
 	});
+	renderTable();
+}
+
+function updateEntryValorById(id, valorRaw) {
+	const entry = entries.find(e => String(e.id) === String(id));
+	if (!entry || entry.removed) return;
+	const novo = _normalizeDecimalString(String(valorRaw ?? ''));
+	if (novo === '0' && String(valorRaw ?? '').trim() !== '0') {
+		alert('Valor inválido');
+		renderTable();
+		return;
+	}
+	entry.valorNorm = novo;
+	entry.totalStr = multiplyDecimalStrings(entry.litrosStr, entry.valorNorm);
 	renderTable();
 }
 
@@ -988,9 +1002,9 @@ function renderTabelaBoleto() {
 			<td>${boleto.produto}</td>
 			<td>${boleto.volumeNorm}</td>
 			<td>${formatNumberFromDecimalString(boleto.litrosStr)}</td>
-			<td>${formatarMoedaFromDecimalString(boleto.valorNorm)}</td>
+			<td><input type="number" step="0.0001" value="${String(boleto.valorNorm || '0')}" onchange="updateBoletoValorById('${boleto.id}', this.value)" style="width:90px;" /></td>
 			<td>${formatarMoedaFromDecimalString(boleto.totalStr)}</td>
-			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#06b6d4;" onclick="desfazerBoleto('${boleto.id}')">Desfazer</button><button class="delete-btn" onclick="removerBoleto('${boleto.id}')">Excluir</button></td>
+			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#f59e0b;" onclick="editBoletoValorById('${boleto.id}')">Editar</button><button class="delete-btn" style="background:#06b6d4;" onclick="desfazerBoleto('${boleto.id}')">Desfazer</button><button class="delete-btn" onclick="removerBoleto('${boleto.id}')">Excluir</button></td>
 		`;
 			totalBoleto = addDecimalStrings(totalBoleto, boleto.totalStr);
 	});
@@ -1019,6 +1033,38 @@ function setBoletoUnidade(id, unidade) {
 	const boleto = boletos.find(b => String(b.id) === String(id));
 	if (!boleto) return;
 	boleto.unidade = String(unidade || '').trim();
+	saveState();
+	renderTabelaBoleto();
+}
+
+function updateBoletoValorById(id, valorRaw) {
+	const boleto = boletos.find(b => String(b.id) === String(id));
+	if (!boleto) return;
+	const novo = _normalizeDecimalString(String(valorRaw ?? ''));
+	if (novo === '0' && String(valorRaw ?? '').trim() !== '0') {
+		alert('Valor inválido');
+		renderTabelaBoleto();
+		return;
+	}
+	boleto.valorNorm = novo;
+	boleto.totalStr = multiplyDecimalStrings(boleto.litrosStr, boleto.valorNorm);
+	saveState();
+	renderTabelaBoleto();
+}
+
+function editBoletoValorById(id) {
+	const boleto = boletos.find(b => String(b.id) === String(id));
+	if (!boleto) return alert('Carga não encontrada');
+	const current = boleto.valorNorm;
+	const input = prompt('Informe o novo Valor por litro para esta carga (use ponto para decimais):', current);
+	if (input === null) return;
+	const novo = _normalizeDecimalString(String(input));
+	if (novo === '0' && String(input).trim() !== '0') {
+		alert('Valor inválido');
+		return;
+	}
+	boleto.valorNorm = novo;
+	boleto.totalStr = multiplyDecimalStrings(boleto.litrosStr, boleto.valorNorm);
 	saveState();
 	renderTabelaBoleto();
 }
