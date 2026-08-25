@@ -36,6 +36,10 @@
         <span class="tab-icon">📄</span>
         <span class="tab-label">Cargas no Boleto</span>
       </button>
+      <button class="tab-button" onclick="switchTab('tab-credito')">
+        <span class="tab-icon">💳</span>
+        <span class="tab-label">Crédito a fornecedor</span>
+      </button>
       <button class="tab-button" onclick="switchTab('tab-resumo')">
         <span class="tab-icon">📊</span>
         <span class="tab-label">Resumo importado</span>
@@ -45,6 +49,7 @@
         <span class="tab-label">Backup</span>
       </button>
     </nav>
+
   </aside>
 
   <!-- Conteúdo Principal -->
@@ -64,8 +69,8 @@
             <input type="text" id="unidade" placeholder="BM Jaraguá">
           </div>
           <div>
-            <label>Data (MM/DD)</label>
-            <input type="text" id="data" placeholder="MM/DD" maxlength="5">
+            <label>Data</label>
+            <input type="date" id="data">
           </div>
           <div>
             <label>Etiqueta</label>
@@ -80,6 +85,10 @@
           <div>
             <label>Distribuidora</label>
             <input type="text" id="distribuidora" placeholder="ON Petro">
+          </div>
+          <div>
+            <label>Motorista</label>
+            <input type="text" id="motorista" placeholder="João da Silva">
           </div>
           <div>
             <label>Produto</label>
@@ -157,6 +166,7 @@
               <th>Etiqueta</th>
               <th>Data</th>
               <th>Distribuidora</th>
+              <th>Motorista</th>
               <th>Produto</th>
               <th>Volume (m)</th>
               <th>Litros</th>
@@ -214,6 +224,10 @@
             <input type="text" id="boletoUnidade" placeholder="BM Jaraguá">
           </div>
           <div>
+            <label>Data</label>
+            <input type="date" id="boletoData">
+          </div>
+          <div>
             <label>Etiqueta</label>
             <select id="boletoEtiqueta">
               <option value="">Nenhuma</option>
@@ -226,6 +240,10 @@
           <div>
             <label>Distribuidora</label>
             <input type="text" id="boletoDistribuidora" placeholder="ON Petro">
+          </div>
+          <div>
+            <label>Motorista</label>
+            <input type="text" id="boletoMotorista" placeholder="João da Silva">
           </div>
           <div>
             <label>Produto</label>
@@ -263,6 +281,7 @@
               <th>Etiqueta</th>
               <th>Data</th>
               <th>Distribuidora</th>
+              <th>Motorista</th>
               <th>Produto</th>
               <th>Volume (m)</th>
               <th>Litros</th>
@@ -283,6 +302,63 @@
         </div>
       </div>
     </div> <!-- Fim tab-boleto -->
+
+    <!-- TAB CREDITO: CRÉDITO A FORNECEDOR -->
+    <div id="tab-credito" class="tab-content">
+      <div class="card">
+        <h2 style="margin-top:0; color: var(--brand-blue-800);">Crédito a fornecedor</h2>
+        <div class="muted">Mova a carga para esse quadro e informe o novo produto e o novo valor por litro. O sistema compara o valor pago com o novo valor e mostra se ficou com crédito ou valor a pagar.</div>
+
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0;">
+          <button onclick="clearCreditoSelection()" style="background:#94a3b8; margin-top:0;">Limpar seleção</button>
+        </div>
+
+        <table id="tabelaCredito" style="margin-top:16px;">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="selectAllCreditoCheckbox" onclick="toggleSelectAllCredito(this)"></th>
+              <th>Unidade</th>
+              <th>Data</th>
+              <th>Distribuidora</th>
+              <th>Motorista</th>
+              <th>Produto original</th>
+              <th>Novo produto</th>
+              <th>Volume (m)</th>
+              <th>Novo volume</th>
+              <th>Litros</th>
+              <th>Novo litros</th>
+              <th>Valor pago</th>
+              <th>Novo valor/L</th>
+              <th>Novo total</th>
+              <th>Resultado</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <div class="total-box" id="totalCreditoBox" style="margin-top:16px;">
+          SALDO GERAL: <span id="totalCreditoSaldo">R$ 0,00</span>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <h3 style="margin-top:0; color: var(--brand-blue-800);">Saldo por distribuidora e unidade</h3>
+          <table id="tabelaSaldoCredito" style="margin-top:12px;">
+            <thead>
+              <tr>
+                <th>Unidade</th>
+                <th>Distribuidora</th>
+                <th>Saldo</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div style="margin-top:16px; height: 280px;">
+            <canvas id="saldoCreditoChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div> <!-- Fim tab-credito -->
 
     <!-- TAB RESUMO: RESUMO IMPORTADO -->
     <div id="tab-resumo" class="tab-content">
@@ -351,7 +427,6 @@
     <div class="signature">By JOÃO PEDRO</div>
   </footer>
 
-  <!-- Painel secundário do gráfico de Distribuidoras -->
   <div id="distribPanel" class="modal-overlay" style="display:none;">
     <div class="modal-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">

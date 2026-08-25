@@ -1,189 +1,473 @@
-let totalGeral = '0'; // armazenado como string decimal exata
+﻿let totalGeral = '0'; // armazenado como string decimal exata
 let entries = [];
 let boletos = []; // novo array para cargas no boleto
+let creditos = []; // novo array para acompanhamento de crédito a fornecedor
+let saldoCreditoChart = null;
 let resumoVolumeRows = [];
 let entryIdCounter = 1;
 let activeFilters = { unidade: '', distribuidora: '', produto: '' };
 let boletoFilters = { unidade: '', distribuidora: '', produto: '' };
 let distribChart = null;
 
-// ===== FUNÇÕES DE NAVEGAÇÃO POR ABAS =====
-function switchTab(tabId) {
-	// Ocultar todas as abas
-	const allTabs = document.querySelectorAll('.tab-content');
-	allTabs.forEach(tab => tab.classList.remove('active'));
+class WKComprasUtils {
+	static produtoFiltra(entryProduto, filtroProduto) {
+		const normalize = str => String(str || '').toLowerCase().replace(/[-\s]/g, '');
+		const entryNorm = normalize(entryProduto);
+		const filtroNorm = normalize(filtroProduto);
+		if (!filtroNorm) return true;
 
-	// Remover classe ativa de todos os botões
-	const allButtons = document.querySelectorAll('.tab-button');
-	allButtons.forEach(btn => btn.classList.remove('active'));
+		const produtoMap = {
+			gc: ['gc', 'gasolinacomum'],
+			gad: ['gad', 'gasolinaaditivada'],
+			's10': ['s10'],
+			's500': ['s500'],
+			etanol: ['etanol']
+		};
 
-	// Mostrar a aba selecionada
-	const selectedTab = document.getElementById(tabId);
-	if (selectedTab) {
-		selectedTab.classList.add('active');
+		for (const termos of Object.values(produtoMap)) {
+			if (termos.includes(filtroNorm)) {
+				return termos.some(termo => entryNorm.includes(termo));
+			}
+		}
+
+		return entryNorm.includes(filtroNorm);
 	}
 
-	// Marcar o botão como ativo
-	event.target.closest('.tab-button').classList.add('active');
+	static normalizeDecimalString(s) {
+		if (s === null || s === undefined) return '0';
+		s = String(s).trim();
+		if (s === '') return '0';
+		s = s.replace(/[R$£€¥₹]|[a-zA-Z]+/g, '');
+		s = s.replace(/[^0-9+\-.,]/g, '');
+		if (s === '') return '0';
+		if (s.indexOf(',') !== -1) {
+			s = s.replace(/,/g, '.');
+		}
+		const dots = (s.match(/\./g) || []).length;
+		if (dots > 1) {
+			const lastIndex = s.lastIndexOf('.');
+			const intPart = s.slice(0, lastIndex).replace(/\./g, '');
+			s = intPart + '.' + s.slice(lastIndex + 1);
+		}
+		if (!/^[+-]?\d*(?:\.\d*)?$/.test(s)) return '0';
+		let sign = '';
+		if (s[0] === '+') s = s.slice(1);
+		if (s[0] === '-') { sign = '-'; s = s.slice(1); }
+		s = s.replace(/^0+(?=\d|\.)/, '');
+		if (s[0] === '.') s = '0' + s;
+		if (s === '') s = '0';
+		return sign + s;
+	}
+
+	static splitIntScale(s) {
+		s = WKComprasUtils.normalizeDecimalString(s);
+		let sign = '';
+		if (s[0] === '-') { sign = '-'; s = s.slice(1); }
+		const parts = s.split('.');
+		const intPart = parts[0] || '0';
+		const fracPart = parts[1] || '';
+		const intStr = (intPart + fracPart).replace(/^0+(?!$)/, '') || '0';
+		const scale = fracPart.length;
+		return { sign, intStr, scale };
+	}
+
+	static multiplyDecimalStrings(a, b) {
+		const A = WKComprasUtils.splitIntScale(a);
+		const B = WKComprasUtils.splitIntScale(b);
+		const aInt = BigInt(A.intStr);
+		const bInt = BigInt(B.intStr);
+		const prod = aInt * bInt;
+		const scale = A.scale + B.scale;
+		let prodStr = prod.toString();
+		if (scale === 0) {
+			return (A.sign === '-' ^ B.sign === '-') ? '-' + prodStr : prodStr;
+		}
+		if (prodStr.length <= scale) prodStr = prodStr.padStart(scale + 1, '0');
+		const intPart = prodStr.slice(0, prodStr.length - scale);
+		const fracPart = prodStr.slice(prodStr.length - scale).replace(/0+$/,'');
+		const sign = (A.sign === '-' ^ B.sign === '-') ? '-' : '';
+		return sign + (fracPart ? intPart + '.' + fracPart : intPart);
+	}
+
+	static addDecimalStrings(a, b) {
+		const A = WKComprasUtils.splitIntScale(a);
+		const B = WKComprasUtils.splitIntScale(b);
+		const scale = Math.max(A.scale, B.scale);
+		const aInt = BigInt(A.intStr) * BigInt(10 ** (scale - A.scale));
+		const bInt = BigInt(B.intStr) * BigInt(10 ** (scale - B.scale));
+		const aSign = A.sign === '-' ? -1n : 1n;
+		const bSign = B.sign === '-' ? -1n : 1n;
+		const sum = aSign * aInt + bSign * bInt;
+		const sign = sum < 0 ? '-' : '';
+		const abs = sum < 0 ? -sum : sum;
+		let s = abs.toString();
+		if (scale === 0) return sign + s;
+		if (s.length <= scale) s = s.padStart(scale + 1, '0');
+		const intPart = s.slice(0, s.length - scale);
+		const fracPart = s.slice(s.length - scale).replace(/0+$/,'');
+		return sign + (fracPart ? intPart + '.' + fracPart : intPart);
+	}
+
+	static subtractDecimalStrings(a, b) {
+		return WKComprasUtils.addDecimalStrings(a, '-' + WKComprasUtils.normalizeDecimalString(String(b || '0')));
+	}
+
+	static formatDecimalLocale(s) {
+		s = WKComprasUtils.normalizeDecimalString(s);
+		let sign = '';
+		if (s[0] === '-') { sign = '-'; s = s.slice(1); }
+		const parts = s.split('.');
+		let intPart = parts[0] || '0';
+		const fracPart = parts[1] || '';
+		intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+		return sign + (fracPart ? intPart + ',' + fracPart : intPart);
+	}
+
+	static formatMoney(s) {
+		return 'R$ ' + WKComprasUtils.formatDecimalLocale(s);
+	}
+
+	static formatNumber(s) {
+		return WKComprasUtils.formatDecimalLocale(s);
+	}
+
+	static extractFirstTwoNames(value) {
+		const raw = String(value ?? '').trim();
+		if (!raw) return '';
+		const names = raw.split(/\s+/).filter(Boolean);
+		if (names.length <= 2) return names.join(' ');
+		return `${names[0]} ${names[1]}`;
+	}
+
+	static excelSerialToDate(serial) {
+		const n = Number(serial);
+		if (!Number.isFinite(n)) return '';
+		const utc = Date.UTC(1899, 11, 30) + (n - 1) * 86400000;
+		const date = new Date(utc);
+		const y = date.getUTCFullYear();
+		const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+		const d = String(date.getUTCDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+
+	static normalizeDateValue(value) {
+		if (value === null || value === undefined) return '';
+		let s = String(value).trim();
+		if (!s) return '';
+
+		if (/^\d{5,}$/.test(s)) {
+			const serial = Number(s);
+			if (Number.isFinite(serial)) {
+				const converted = WKComprasUtils.excelSerialToDate(serial);
+				if (converted) return converted;
+			}
+		}
+
+		if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+		if (/^\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?$/.test(s)) {
+			const parts = s.split(/[\/\-]/);
+			let day = Number(parts[0]);
+			let month = Number(parts[1]);
+			let year = parts.length >= 3 ? Number(parts[2]) : new Date().getFullYear();
+
+			if (Number.isNaN(day) || Number.isNaN(month) || Number.isNaN(year)) return '';
+			if (parts.length >= 3) {
+				const normalizedYear = Number(parts[2]);
+				if (Number.isFinite(normalizedYear)) year = normalizedYear;
+			}
+			const date = new Date(year, month - 1, day);
+			if (Number.isNaN(date.getTime())) return '';
+			return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+		}
+		const date = new Date(s);
+		if (Number.isNaN(date.getTime())) return '';
+		const y = date.getFullYear();
+		const m = String(date.getMonth() + 1).padStart(2, '0');
+		const d = String(date.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+
+	static findDateValueInRow(row) {
+		const values = Object.values(row || {});
+		const candidates = [];
+		for (const value of values) {
+			if (value === null || value === undefined || String(value).trim() === '') continue;
+			const s = String(value).trim();
+			if (/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?$/.test(s) || /^\d{4}-\d{2}-\d{2}$/.test(s) || /^\d{5,}$/.test(s)) {
+				candidates.push(value);
+			}
+		}
+		for (const candidate of candidates) {
+			const normalized = WKComprasUtils.normalizeDateValue(candidate);
+			if (normalized) return normalized;
+		}
+		return '';
+	}
+
+	static isValidMonthDay(value) {
+		const normalized = WKComprasUtils.normalizeDateValue(value);
+		if (!normalized) return false;
+		const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized);
+		if (!match) return false;
+		const year = Number(match[1]);
+		const month = Number(match[2]);
+		const day = Number(match[3]);
+		if (year < 2000 || month < 1 || month > 12) return false;
+		const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+		const leapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+		const totalDays = month === 2 && leapYear ? 29 : daysInMonth[month - 1];
+		return day >= 1 && day <= totalDays;
+	}
+
+	static escapeHtmlAttr(value) {
+		return String(value ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	}
+}
+
+class WKComprasLayoutController {
+	switchTab(tabId, eventArg) {
+		const allTabs = document.querySelectorAll('.tab-content');
+		allTabs.forEach(tab => tab.classList.remove('active'));
+
+		const allButtons = document.querySelectorAll('.tab-button');
+		allButtons.forEach(btn => btn.classList.remove('active'));
+
+		const selectedTab = document.getElementById(tabId);
+		if (selectedTab) {
+			selectedTab.classList.add('active');
+		}
+
+		const eventObj = eventArg || window.event;
+		if (eventObj && eventObj.target) {
+			const button = eventObj.target.closest('.tab-button');
+			if (button) button.classList.add('active');
+		}
+	}
+
+	toggleSidebar() {
+		const sidebar = document.getElementById('sidebar');
+		const toggle = document.querySelector('.sidebar-toggle');
+		const overlay = document.getElementById('sidebarOverlay');
+		const isMobile = window.innerWidth <= 768;
+
+		if (sidebar && toggle) {
+			const isClosed = sidebar.classList.contains('closed');
+
+			if (isClosed) {
+				sidebar.classList.remove('closed');
+				toggle.classList.add('active');
+				if (overlay && isMobile) overlay.classList.add('active');
+				localStorage.setItem('sidebarState', 'open');
+			} else {
+				sidebar.classList.add('closed');
+				toggle.classList.remove('active');
+				if (overlay) overlay.classList.remove('active');
+				localStorage.setItem('sidebarState', 'closed');
+			}
+		}
+	}
+
+	restoreSidebarState() {
+		const sidebarState = localStorage.getItem('sidebarState');
+		const sidebar = document.getElementById('sidebar');
+		const toggle = document.querySelector('.sidebar-toggle');
+		const overlay = document.getElementById('sidebarOverlay');
+		const shouldOpen = sidebarState !== 'closed';
+		const isMobile = window.innerWidth <= 768;
+
+		if (sidebar) {
+			if (shouldOpen) {
+				sidebar.classList.remove('closed');
+			} else {
+				sidebar.classList.add('closed');
+			}
+		}
+
+		if (toggle) {
+			if (shouldOpen) {
+				toggle.classList.add('active');
+			} else {
+				toggle.classList.remove('active');
+			}
+		}
+
+		if (overlay) {
+			if (shouldOpen && isMobile) {
+				overlay.classList.add('active');
+			} else {
+				overlay.classList.remove('active');
+			}
+		}
+
+		if (!sidebarState) {
+			localStorage.setItem('sidebarState', 'open');
+		}
+	}
+
+	openDistribuidorPanel() {
+		const panel = document.getElementById('distribPanel');
+		if (!panel) return;
+		panel.style.display = 'flex';
+		this.renderDistribuidorChart();
+	}
+
+	closeDistribuidorPanel() {
+		const panel = document.getElementById('distribPanel');
+		if (!panel) return;
+		panel.style.display = 'none';
+	}
+
+	renderDistribuidorChart() {
+		const canvas = document.getElementById('distribChart');
+		if (!canvas) return;
+
+		const groups = {};
+		entries.forEach(entry => {
+			if (entry.removed) return;
+			const key = String(entry.distribuidora || 'Sem Distribuidora').trim();
+			if (!groups[key]) groups[key] = '0';
+			groups[key] = WKComprasUtils.addDecimalStrings(groups[key], entry.totalStr || '0');
+		});
+
+		const labels = Object.keys(groups);
+		const dataValues = labels.map(l => {
+			const v = groups[l] || '0';
+			return parseFloat(String(v)) || 0;
+		});
+
+		const ctx = canvas.getContext('2d');
+
+		if (distribChart) {
+			distribChart.data.labels = labels;
+			distribChart.data.datasets[0].data = dataValues;
+			distribChart.update();
+			return;
+		}
+
+		const colors = labels.map((_, i) => {
+			const base = ["#2563eb","#9333ea","#10b981","#f59e0b","#ef4444","#06b6d4","#7c3aed"];
+			return base[i % base.length];
+		});
+
+		distribChart = new Chart(ctx, {
+			type: 'bar',
+			data: {
+				labels: labels,
+				datasets: [{
+					label: 'Total (R$)',
+					data: dataValues,
+					backgroundColor: colors,
+					borderRadius: 6,
+					barPercentage: 0.6
+				}]
+			},
+			options: {
+				responsive: true,
+				maintainAspectRatio: false,
+				scales: {
+					y: {
+						beginAtZero: true,
+						ticks: {
+							callback: function(value) { return 'R$ ' + Number(value).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+						}
+					}
+				},
+				plugins: {
+					tooltip: {
+						callbacks: {
+							label: function(context) {
+								const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
+								return 'R$ ' + Number(val).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+							}
+						}
+					},
+					legend: { display: false }
+				}
+			}
+		});
+	}
+}
+
+class WKComprasPersistenceController {
+	saveState() {
+		const state = {
+			entries,
+			boletos,
+			creditos,
+			resumoVolumeRows,
+			entryIdCounter,
+			activeFilters,
+			boletoFilters
+		};
+		localStorage.setItem('wkComprasState', JSON.stringify(state));
+	}
+
+	loadState() {
+		const raw = localStorage.getItem('wkComprasState');
+		if (!raw) return;
+		try {
+			const state = JSON.parse(raw);
+			if (Array.isArray(state.entries)) entries = state.entries.map(entry => ({ etiqueta: '', ...entry }));
+			if (Array.isArray(state.boletos)) boletos = state.boletos.map(boleto => ({ etiqueta: '', selected: Boolean(boleto.selected), ...boleto }));
+			if (Array.isArray(state.creditos)) creditos = state.creditos.map(item => ({ etiqueta: '', selected: Boolean(item.selected), valorPago: '0', ...item }));
+			if (Array.isArray(state.resumoVolumeRows)) resumoVolumeRows = state.resumoVolumeRows.map(row => ({ unidade: '', produto: '', total: '0', ...row }));
+			entryIdCounter = typeof state.entryIdCounter === 'number' && state.entryIdCounter > 0 ? state.entryIdCounter : entryIdCounter;
+			activeFilters = state.activeFilters || activeFilters;
+			boletoFilters = state.boletoFilters || boletoFilters;
+			if (document.getElementById('filterUnidade')) document.getElementById('filterUnidade').value = activeFilters.unidade || '';
+			if (document.getElementById('filterDistribuidora')) document.getElementById('filterDistribuidora').value = activeFilters.distribuidora || '';
+			if (document.getElementById('filterProduto')) document.getElementById('filterProduto').value = activeFilters.produto || '';
+			if (document.getElementById('filterBoletoUnidade')) document.getElementById('filterBoletoUnidade').value = boletoFilters.unidade || '';
+			if (document.getElementById('filterBoletoDistribuidora')) document.getElementById('filterBoletoDistribuidora').value = boletoFilters.distribuidora || '';
+			if (document.getElementById('filterBoletoProduto')) document.getElementById('filterBoletoProduto').value = boletoFilters.produto || '';
+			renderTable();
+			renderTabelaBoleto();
+			renderTabelaCredito();
+			renderTabelaSaldoCredito();
+			renderResumoVolumeTable();
+			wkComprasLayoutController.renderDistribuidorChart();
+		} catch (err) {
+			console.warn('Não foi possível carregar estado salvo:', err);
+		}
+	}
+}
+
+const wkComprasLayoutController = new WKComprasLayoutController();
+const wkComprasPersistenceController = new WKComprasPersistenceController();
+
+// ===== FUNÇÕES DE NAVEGAÇÃO POR ABAS =====
+function switchTab(tabId, eventArg) {
+	return wkComprasLayoutController.switchTab(tabId, eventArg);
 }
 
 // ===== FUNÇÕES DE CONTROLE DO MENU LATERAL =====
 function toggleSidebar() {
-	const sidebar = document.getElementById('sidebar');
-	const toggle = document.querySelector('.sidebar-toggle');
-	const overlay = document.getElementById('sidebarOverlay');
-
-	if (sidebar && toggle) {
-		const isClosed = sidebar.classList.contains('closed');
-
-		if (isClosed) {
-			sidebar.classList.remove('closed');
-			toggle.classList.add('active');
-			if (overlay) overlay.classList.add('active');
-			localStorage.setItem('sidebarState', 'open');
-		} else {
-			sidebar.classList.add('closed');
-			toggle.classList.remove('active');
-			if (overlay) overlay.classList.remove('active');
-			localStorage.setItem('sidebarState', 'closed');
-		}
-	}
+	return wkComprasLayoutController.toggleSidebar();
 }
 
 // Restaurar estado do sidebar ao carregar a página
 window.addEventListener('DOMContentLoaded', function() {
-	const sidebarState = localStorage.getItem('sidebarState') || 'open';
-	const sidebar = document.getElementById('sidebar');
-	const toggle = document.querySelector('.sidebar-toggle');
-	const overlay = document.getElementById('sidebarOverlay');
-
-	if (sidebarState === 'closed') {
-		if (sidebar) sidebar.classList.add('closed');
-		if (toggle) toggle.classList.remove('active');
-		if (overlay) overlay.classList.remove('active');
-	} else {
-		if (sidebar) sidebar.classList.remove('closed');
-		if (toggle) toggle.classList.add('active');
-		if (overlay) overlay.classList.add('active');
-	}
+	wkComprasLayoutController.restoreSidebarState();
 });
 
 function openDistribuidorPanel() {
-	const panel = document.getElementById('distribPanel');
-	if (!panel) return;
-	panel.style.display = 'flex';
-	renderDistribuidorChart();
+	return wkComprasLayoutController.openDistribuidorPanel();
 }
 
 function closeDistribuidorPanel() {
-	const panel = document.getElementById('distribPanel');
-	if (!panel) return;
-	panel.style.display = 'none';
+	return wkComprasLayoutController.closeDistribuidorPanel();
 }
 
 function renderDistribuidorChart() {
-	// agrupa os totais por distribuidora (somente entradas não removidas)
-	const groups = {};
-	entries.forEach(entry => {
-		if (entry.removed) return;
-		const key = String(entry.distribuidora || 'Sem Distribuidora').trim();
-		if (!groups[key]) groups[key] = '0';
-		groups[key] = addDecimalStrings(groups[key], entry.totalStr || '0');
-	});
-
-	const labels = Object.keys(groups);
-	const dataValues = labels.map(l => {
-		const v = groups[l] || '0';
-		return parseFloat(String(v)) || 0;
-	});
-
-	const ctx = document.getElementById('distribChart').getContext('2d');
-
-	if (distribChart) {
-		distribChart.data.labels = labels;
-		distribChart.data.datasets[0].data = dataValues;
-		distribChart.update();
-		return;
-	}
-
-	const colors = labels.map((_, i) => {
-		const base = ["#2563eb","#9333ea","#10b981","#f59e0b","#ef4444","#06b6d4","#7c3aed"];
-		return base[i % base.length];
-	});
-
-	distribChart = new Chart(ctx, {
-		type: 'bar',
-		data: {
-			labels: labels,
-			datasets: [{
-				label: 'Total (R$)',
-				data: dataValues,
-				backgroundColor: colors,
-				borderRadius: 6,
-				barPercentage: 0.6
-			}]
-		},
-		options: {
-			responsive: true,
-			maintainAspectRatio: false,
-			scales: {
-				y: {
-					beginAtZero: true,
-					ticks: {
-						callback: function(value) { return 'R$ ' + Number(value).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
-					}
-				}
-			},
-			plugins: {
-				tooltip: {
-					callbacks: {
-						label: function(context) {
-							const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
-							return 'R$ ' + Number(val).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-						}
-					}
-				},
-				legend: { display: false }
-			}
-		}
-	});
+	return wkComprasLayoutController.renderDistribuidorChart();
 }
 
 function saveState() {
-	const state = {
-		entries,
-		boletos,
-		resumoVolumeRows,
-		entryIdCounter,
-		activeFilters,
-		boletoFilters
-	};
-	localStorage.setItem('wkComprasState', JSON.stringify(state));
+	return wkComprasPersistenceController.saveState();
 }
 
 function loadState() {
-	const raw = localStorage.getItem('wkComprasState');
-	if (!raw) return;
-	try {
-		const state = JSON.parse(raw);
-		if (Array.isArray(state.entries)) entries = state.entries.map(entry => ({ etiqueta: '', ...entry }));
-		if (Array.isArray(state.boletos)) boletos = state.boletos.map(boleto => ({ etiqueta: '', selected: Boolean(boleto.selected), ...boleto }));
-		if (Array.isArray(state.resumoVolumeRows)) resumoVolumeRows = state.resumoVolumeRows.map(row => ({ unidade: '', produto: '', total: '0', ...row }));
-		entryIdCounter = typeof state.entryIdCounter === 'number' && state.entryIdCounter > 0 ? state.entryIdCounter : entryIdCounter;
-		activeFilters = state.activeFilters || activeFilters;
-		boletoFilters = state.boletoFilters || boletoFilters;
-		if (document.getElementById('filterUnidade')) document.getElementById('filterUnidade').value = activeFilters.unidade || '';
-		if (document.getElementById('filterDistribuidora')) document.getElementById('filterDistribuidora').value = activeFilters.distribuidora || '';
-		if (document.getElementById('filterProduto')) document.getElementById('filterProduto').value = activeFilters.produto || '';
-		if (document.getElementById('filterBoletoUnidade')) document.getElementById('filterBoletoUnidade').value = boletoFilters.unidade || '';
-		if (document.getElementById('filterBoletoDistribuidora')) document.getElementById('filterBoletoDistribuidora').value = boletoFilters.distribuidora || '';
-		if (document.getElementById('filterBoletoProduto')) document.getElementById('filterBoletoProduto').value = boletoFilters.produto || '';
-		renderTable();
-		renderTabelaBoleto();
-		renderResumoVolumeTable();
-	} catch (err) {
-		console.warn('Não foi possível carregar estado salvo:', err);
-	}
+	return wkComprasPersistenceController.loadState();
 }
 
 function toggleSelectEntry(id, checked) {
@@ -214,55 +498,29 @@ function clearSelection() {
 }
 
 function produtoFiltra(entryProduto, filtroProduto) {
-	const normalize = str => String(str || '').toLowerCase().replace(/[-\s]/g, '');
-	const entryNorm = normalize(entryProduto);
-	const filtroNorm = normalize(filtroProduto);
-	if (!filtroNorm) return true;
-
-	const produtoMap = {
-		gc: ['gc', 'gasolinacomum'],
-		gad: ['gad', 'gasolinaaditivada'],
-		's10': ['s10'],
-		's500': ['s500'],
-		etanol: ['etanol']
-	};
-
-	for (const termos of Object.values(produtoMap)) {
-		if (termos.includes(filtroNorm)) {
-			return termos.some(termo => entryNorm.includes(termo));
-		}
-	}
-
-	return entryNorm.includes(filtroNorm);
+	return WKComprasUtils.produtoFiltra(entryProduto, filtroProduto);
 }
 
 function _normalizeDecimalString(s) {
-	if (s === null || s === undefined) return '0';
-	s = String(s).trim();
-	if (s === '') return '0';
-	// remove currency symbols and letters
-	s = s.replace(/[R$£€¥₹]|[a-zA-Z]+/g, '');
-	// keep only digits, separators and sign
-	s = s.replace(/[^0-9+\-.,]/g, '');
-	if (s === '') return '0';
-	// treat comma as decimal separator
-	if (s.indexOf(',') !== -1) {
-		s = s.replace(/,/g, '.');
+	return WKComprasUtils.normalizeDecimalString(s);
+}
+
+function syncCreditoWithEntry(entry) {
+	if (!entry) return;
+	const item = creditos.find(i => String(i.id) === String(entry.id));
+	if (!item) return;
+	item.unidade = entry.unidade;
+	item.distribuidora = entry.distribuidora;
+	item.produto = entry.produto;
+	item.volumeNorm = entry.volumeNorm;
+	item.litrosStr = entry.litrosStr;
+	item.valorNorm = entry.valorNorm;
+	item.totalStr = entry.totalStr;
+	item.novoValorNorm = _normalizeDecimalString(String(item.novoValorNorm || entry.valorNorm || '0'));
+	item.novoTotalStr = multiplyDecimalStrings(item.litrosStr, item.novoValorNorm);
+	if (!item.valorPago || _normalizeDecimalString(String(item.valorPago)) === '0') {
+		item.valorPago = entry.totalStr;
 	}
-	const dots = (s.match(/\./g) || []).length;
-	if (dots > 1) {
-		const lastIndex = s.lastIndexOf('.');
-		const intPart = s.slice(0, lastIndex).replace(/\./g, '');
-		s = intPart + '.' + s.slice(lastIndex + 1);
-	}
-	if (!/^[+-]?\d*(?:\.\d*)?$/.test(s)) return '0';
-	let sign = '';
-	if (s[0] === '+') s = s.slice(1);
-	if (s[0] === '-') { sign = '-'; s = s.slice(1); }
-	s = s.replace(/^0+(?=\d|\.)/, '');
-	if (s[0] === '.') s = '0' + s;
-	if (s === '') s = '0';
-	return sign + s;
 }
 
 function applyBulkValor() {
@@ -276,11 +534,13 @@ function applyBulkValor() {
 		if (!entry.selected) return;
 		entry.valorNorm = novo;
 		entry.totalStr = multiplyDecimalStrings(entry.litrosStr, entry.valorNorm);
+		syncCreditoWithEntry(entry);
 		any = true;
 	});
 	if (!any) { alert('Nenhuma linha selecionada.'); return; }
 	const chk = document.getElementById('selectAllCheckbox'); if (chk) chk.checked = false;
 	renderTable();
+	renderTabelaCredito();
 }
 
 function applyFilters() {
@@ -319,82 +579,45 @@ function clearAllCargas() {
 // (restored backup functions are below)
 
 function _splitIntScale(s) {
-	s = _normalizeDecimalString(s);
-	let sign = '';
-	if (s[0] === '-') { sign = '-'; s = s.slice(1); }
-	const parts = s.split('.');
-	const intPart = parts[0] || '0';
-	const fracPart = parts[1] || '';
-	const intStr = (intPart + fracPart).replace(/^0+(?!$)/, '') || '0';
-	const scale = fracPart.length;
-	return { sign, intStr, scale };
+	return WKComprasUtils.splitIntScale(s);
 }
 
-function _padRight(str, n) { while (str.length < n) str = '0' + str; return str; }
+function _padRight(str, n) { return WKComprasUtils.padRight(str, n); }
 
 function multiplyDecimalStrings(a, b) {
-	const A = _splitIntScale(a);
-	const B = _splitIntScale(b);
-	const aInt = BigInt(A.intStr);
-	const bInt = BigInt(B.intStr);
-	const prod = aInt * bInt;
-	const scale = A.scale + B.scale;
-	let prodStr = prod.toString();
-	if (scale === 0) {
-		return (A.sign === '-' ^ B.sign === '-') ? '-' + prodStr : prodStr;
-	}
-	// ensure string has at least scale+1 chars to place decimal point
-	if (prodStr.length <= scale) prodStr = prodStr.padStart(scale + 1, '0');
-	const intPart = prodStr.slice(0, prodStr.length - scale);
-	const fracPart = prodStr.slice(prodStr.length - scale).replace(/0+$/,'');
-	const sign = (A.sign === '-' ^ B.sign === '-') ? '-' : '';
-	return sign + (fracPart ? intPart + '.' + fracPart : intPart);
+	return WKComprasUtils.multiplyDecimalStrings(a, b);
 }
 
 function addDecimalStrings(a, b) {
-	const A = _splitIntScale(a);
-	const B = _splitIntScale(b);
-	const scale = Math.max(A.scale, B.scale);
-	const aInt = BigInt(A.intStr) * BigInt(10 ** (scale - A.scale));
-	const bInt = BigInt(B.intStr) * BigInt(10 ** (scale - B.scale));
-	const aSign = A.sign === '-' ? -1n : 1n;
-	const bSign = B.sign === '-' ? -1n : 1n;
-	const sum = aSign * aInt + bSign * bInt;
-	const sign = sum < 0 ? '-' : '';
-	const abs = sum < 0 ? -sum : sum;
-	let s = abs.toString();
-	if (scale === 0) return sign + s;
-	if (s.length <= scale) s = s.padStart(scale + 1, '0');
-	const intPart = s.slice(0, s.length - scale);
-	const fracPart = s.slice(s.length - scale).replace(/0+$/,'');
-	return sign + (fracPart ? intPart + '.' + fracPart : intPart);
+	return WKComprasUtils.addDecimalStrings(a, b);
+}
+
+function subtractDecimalStrings(a, b) {
+	return WKComprasUtils.subtractDecimalStrings(a, b);
 }
 
 function _formatDecimalLocale(s) {
-	s = _normalizeDecimalString(s);
-	let sign = '';
-	if (s[0] === '-') { sign = '-'; s = s.slice(1); }
-	const parts = s.split('.');
-	let intPart = parts[0] || '0';
-	const fracPart = parts[1] || '';
-	// add thousands separator '.' for pt-BR
-	intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-	return sign + (fracPart ? intPart + ',' + fracPart : intPart);
+	return WKComprasUtils.formatDecimalLocale(s);
 }
 
 function formatarMoedaFromDecimalString(s) {
-	return 'R$ ' + _formatDecimalLocale(s);
+	return WKComprasUtils.formatMoney(s);
 }
 
 function formatNumberFromDecimalString(s) {
-	return _formatDecimalLocale(s);
+	return WKComprasUtils.formatNumber(s);
+}
+
+function extractFirstTwoNames(value) {
+	return WKComprasUtils.extractFirstTwoNames(value);
 }
 
 function adicionarCarga() {
 	const unidade = document.getElementById('unidade').value.trim();
-	const data = document.getElementById('data').value.trim();
+	const data = normalizeDateValue(document.getElementById('data').value.trim());
 	const etiqueta = document.getElementById('etiqueta').value;
 	const distribuidora = document.getElementById('distribuidora').value.trim();
+	const motorista = document.getElementById('motorista').value.trim();
 	const produto = document.getElementById('produto').value;
 	const volumeStrRaw = document.getElementById('volume').value.trim();
 	const valorStrRaw = document.getElementById('valor').value.trim();
@@ -405,26 +628,41 @@ function adicionarCarga() {
 	}
 
 	if (!isValidMonthDay(data)) {
-		alert('Informe a data no formato MM/DD.');
+		alert('Informe uma data válida.');
 		return;
 	}
 
-	adicionarCargaComDados(unidade, data, etiqueta, distribuidora, produto, volumeStrRaw, valorStrRaw);
+	adicionarCargaComDados(unidade, data, etiqueta, distribuidora, motorista, produto, volumeStrRaw, valorStrRaw);
 
 	document.getElementById('volume').value = '';
 	document.getElementById('valor').value = '';
 	document.getElementById('data').value = '';
 	document.getElementById('etiqueta').value = '';
+	document.getElementById('motorista').value = '';
+}
+
+function formatDateForDisplay(value) {
+	const normalized = WKComprasUtils.normalizeDateValue(value);
+	if (!normalized) return '';
+	const [year, month, day] = normalized.split('-').map(Number);
+	if (!year || !month || !day) return '';
+	return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+}
+
+function excelSerialToDate(serial) {
+	return WKComprasUtils.excelSerialToDate(serial);
+}
+
+function normalizeDateValue(value) {
+	return WKComprasUtils.normalizeDateValue(value);
+}
+
+function findDateValueInRow(row) {
+	return WKComprasUtils.findDateValueInRow(row);
 }
 
 function isValidMonthDay(value) {
-	const match = /^([0-1][0-9])\/([0-3][0-9])$/.exec(value);
-	if (!match) return false;
-	const month = Number(match[1]);
-	const day = Number(match[2]);
-	if (month < 1 || month > 12) return false;
-	const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-	return day >= 1 && day <= daysInMonth[month - 1];
+	return WKComprasUtils.isValidMonthDay(value);
 }
 
 function removerLinhaById(id) {
@@ -459,14 +697,15 @@ function renderTable() {
 				<option value="Antes de Ontem" ${entry.etiqueta === 'Antes de Ontem' ? 'selected' : ''}>Antes de Ontem</option>
 				<option value="Amanhã" ${entry.etiqueta === 'Amanhã' ? 'selected' : ''}>Amanhã</option>
 			</select></td>
-			<td>${entry.data || ''}</td>
+			<td><input type="date" value="${String(entry.data || '').slice(0, 10)}" onchange="updateEntryDateById('${entry.id}', this.value)" style="width:120px;" /></td>
 			<td>${entry.distribuidora}</td>
+			<td>${entry.motorista || ''}</td>
 			<td>${entry.produto}</td>
 			<td>${entry.volumeNorm}</td>
 			<td>${formatNumberFromDecimalString(entry.litrosStr)}</td>
 			<td><input type="number" step="0.0001" value="${String(entry.valorNorm || '0')}" onchange="updateEntryValorById('${entry.id}', this.value)" style="width:90px;" /></td>
 			<td>${formatarMoedaFromDecimalString(entry.totalStr)}</td>
-			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#10b981;" onclick="moverParaBoleto('${entry.id}')">Boleto</button><button class="delete-btn" style="background:#f59e0b;" onclick="editValorById('${entry.id}')">Editar</button><button class="delete-btn" onclick="removerLinhaById('${entry.id}')">Excluir</button></td>
+			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#10b981;" onclick="moverParaBoleto('${entry.id}')">Boleto</button><button class="delete-btn" style="background:#8b5cf6;" onclick="moverParaCredito('${entry.id}')">Crédito</button><button class="delete-btn" style="background:#f59e0b;" onclick="editValorById('${entry.id}')">Editar</button><button class="delete-btn" onclick="removerLinhaById('${entry.id}')">Excluir</button></td>
 		`;
 
 		totalVisible = addDecimalStrings(totalVisible, entry.totalStr);
@@ -474,7 +713,7 @@ function renderTable() {
 
 	document.getElementById('totalGeral').innerText = formatarMoedaFromDecimalString(totalVisible);
 	renderVolumeSummary();
-	saveState();
+	renderDistribuidorChart();
 }
 
 function setEntryLabel(id, label) {
@@ -497,21 +736,55 @@ function editValorById(id) {
 	targetEntries.forEach(entry => {
 		entry.valorNorm = novo;
 		entry.totalStr = multiplyDecimalStrings(entry.litrosStr, entry.valorNorm);
+		syncCreditoWithEntry(entry);
 	});
 	renderTable();
+	renderTabelaCredito();
 }
 
 function updateEntryValorById(id, valorRaw) {
-	const entry = entries.find(e => String(e.id) === String(id));
-	if (!entry || entry.removed) return;
+	const selectedEntries = entries.filter(e => !e.removed && e.selected);
+	const targetEntries = selectedEntries.length > 0
+		? selectedEntries
+		: [entries.find(e => String(e.id) === String(id))].filter(Boolean);
+	if (!targetEntries.length) return;
+
 	const novo = _normalizeDecimalString(String(valorRaw ?? ''));
 	if (novo === '0' && String(valorRaw ?? '').trim() !== '0') {
 		alert('Valor inválido');
 		renderTable();
 		return;
 	}
-	entry.valorNorm = novo;
-	entry.totalStr = multiplyDecimalStrings(entry.litrosStr, entry.valorNorm);
+
+	targetEntries.forEach(entry => {
+		entry.valorNorm = novo;
+		entry.totalStr = multiplyDecimalStrings(entry.litrosStr, entry.valorNorm);
+		syncCreditoWithEntry(entry);
+	});
+
+	renderTable();
+	renderTabelaCredito();
+}
+
+function updateEntryDateById(id, dateValue) {
+	const selectedEntries = entries.filter(e => !e.removed && e.selected);
+	const targetEntries = selectedEntries.length > 0
+		? selectedEntries
+		: [entries.find(e => String(e.id) === String(id))].filter(Boolean);
+	if (!targetEntries.length) return;
+
+	const normalized = normalizeDateValue(dateValue);
+	if (!normalized || !isValidMonthDay(normalized)) {
+		alert('Data inválida');
+		renderTable();
+		return;
+	}
+
+	targetEntries.forEach(entry => {
+		entry.data = normalized;
+	});
+
+	saveState();
 	renderTable();
 }
 
@@ -531,7 +804,7 @@ function inserirLinhaNaTabela(id, unidade, distribuidora, produto, volumeNorm, l
 	`;
 }
 
-function adicionarCargaComDados(unidade, data, etiqueta, distribuidora, produto, volumeStrRaw, valorStrRaw) {
+function adicionarCargaComDados(unidade, data, etiqueta, distribuidora, motorista, produto, volumeStrRaw, valorStrRaw) {
 	const volumeNorm = _normalizeDecimalString(String(volumeStrRaw));
 	const valorNorm = _normalizeDecimalString(String(valorStrRaw));
 
@@ -544,6 +817,7 @@ function adicionarCargaComDados(unidade, data, etiqueta, distribuidora, produto,
 		etiqueta: String(etiqueta || ''),
 		data: String(data),
 		distribuidora: String(distribuidora),
+		motorista: String(motorista || ''),
 		produto: String(produto),
 		volumeNorm,
 		litrosStr,
@@ -559,14 +833,21 @@ function adicionarCargaComDados(unidade, data, etiqueta, distribuidora, produto,
 
 function adicionarCargaBoleto() {
 	const unidade = document.getElementById('boletoUnidade').value.trim();
+	const data = normalizeDateValue(document.getElementById('boletoData').value);
 	const etiqueta = document.getElementById('boletoEtiqueta').value;
 	const distribuidora = document.getElementById('boletoDistribuidora').value.trim();
+	const motorista = document.getElementById('boletoMotorista').value.trim();
 	const produto = document.getElementById('boletoProduto').value;
 	const volumeStrRaw = document.getElementById('boletoVolume').value.trim();
 	const valorStrRaw = document.getElementById('boletoValor').value.trim();
 
 	if (!unidade || !distribuidora || !volumeStrRaw || !valorStrRaw) {
 		alert('Preencha todos os campos do boleto.');
+		return;
+	}
+
+	if (data && !isValidMonthDay(data)) {
+		alert('Data inválida');
 		return;
 	}
 
@@ -579,8 +860,9 @@ function adicionarCargaBoleto() {
 		id: entryIdCounter++,
 		unidade: String(unidade),
 		etiqueta: String(etiqueta || ''),
-		data: '',
+		data: String(data || ''),
 		distribuidora: String(distribuidora),
+		motorista: String(motorista || ''),
 		produto: String(produto),
 		selected: false,
 		volumeNorm,
@@ -590,8 +872,10 @@ function adicionarCargaBoleto() {
 	});
 
 	document.getElementById('boletoUnidade').value = '';
+	document.getElementById('boletoData').value = '';
 	document.getElementById('boletoEtiqueta').value = '';
 	document.getElementById('boletoDistribuidora').value = '';
+	document.getElementById('boletoMotorista').value = '';
 	document.getElementById('boletoProduto').value = 'GC';
 	document.getElementById('boletoVolume').value = '';
 	document.getElementById('boletoValor').value = '';
@@ -633,7 +917,9 @@ function importarPlanilha() {
 
 				const unidade = findVal(['unidade','unit','unit name','estabelecimento','estação','station']) || (Object.values(row)[0] || '');
 				const distribuidora = findVal(['distribuidora','distributor','fornecedor','supplier']) || (Object.values(row)[1] || '');
-				const produto = findVal(['produto','product','produto/serviço','material']) || (Object.values(row)[2] || '');
+				const dataImport = normalizeDateValue(findVal(['data','date','dt','dia','data carga','data da carga']) || findDateValueInRow(row));
+				const motoristaRaw = findVal(['motorista','driver','nome motorista','motorista nome','motorista nome completo']) || (Object.values(row)[3] || '');
+				const produto = findVal(['produto','product','produto/serviço','material']) || (Object.values(row)[4] || '');
 				let volume = findVal(['volume','vol','quantidade','qtd','volume (m)','volume m']);
 				let valor = findVal(['valor','price','preco','preço','valor por litro','valor litro','valor/l','valor_l','valor unitario','valor unitário','preco unitario','preço unitário','valor_litro']);
 
@@ -665,11 +951,11 @@ function importarPlanilha() {
 
 				if (String(volume).trim() === '' || String(valor).trim() === '') {
 					skipped++;
-					if (sample.length < 5) sample.push({ row: rowIndex+1, parsed: { unidade, distribuidora, produto, volume, valor }, raw: row });
+					if (sample.length < 5) sample.push({ row: rowIndex+1, parsed: { unidade, distribuidora, motorista: extractFirstTwoNames(motoristaRaw), produto, volume, valor }, raw: row });
 					return;
 				}
 
-				adicionarCargaComDados(String(unidade), '', '', String(distribuidora), String(produto), String(volume), String(valor));
+				adicionarCargaComDados(String(unidade), dataImport, '', String(distribuidora), extractFirstTwoNames(motoristaRaw), String(produto), String(volume), String(valor));
 				added++;
 			});
 
@@ -902,6 +1188,7 @@ function exportToExcel() {
 	const rows = getVisibleEntries().map(entry => ({
 		Unidade: entry.unidade,
 		Distribuidora: entry.distribuidora,
+		Motorista: entry.motorista || '',
 		Produto: entry.produto,
 		'Volume (m)': entry.volumeNorm,
 		Litros: formatNumberFromDecimalString(entry.litrosStr),
@@ -927,6 +1214,7 @@ function moverParaBoleto(id) {
 		data: entry.data || '',
 		selected: false,
 		distribuidora: entry.distribuidora,
+		motorista: entry.motorista || '',
 		produto: entry.produto,
 		volumeNorm: entry.volumeNorm,
 		litrosStr: entry.litrosStr,
@@ -967,6 +1255,338 @@ function escapeHtmlAttr(value) {
 	return String(value ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function getCreditoSaldo(item) {
+	if (!item) return '0';
+	const pago = _normalizeDecimalString(String(item.valorPago || item.totalStr || '0'));
+	const novoTotal = _normalizeDecimalString(String(item.novoTotalStr || item.totalStr || '0'));
+	return subtractDecimalStrings(pago, novoTotal);
+}
+
+function getCreditoResumo(saldoStr) {
+	const saldo = _normalizeDecimalString(String(saldoStr || '0'));
+	if (saldo === '0') {
+		return { tipo: 'zero', label: 'Sem saldo', valor: formatarMoedaFromDecimalString('0') };
+	}
+	if (saldo.startsWith('-')) {
+		return { tipo: 'negativo', label: 'A pagar', valor: formatarMoedaFromDecimalString(saldo.replace('-', '')) };
+	}
+	return { tipo: 'positivo', label: 'Crédito', valor: formatarMoedaFromDecimalString(saldo) };
+}
+
+function renderTabelaCredito() {
+	const tbody = document.querySelector('#tabelaCredito tbody');
+	if (!tbody) return;
+	const totalSaldoEl = document.getElementById('totalCreditoSaldo');
+	tbody.innerHTML = '';
+	let totalSaldo = '0';
+
+	if (!creditos.length) {
+		const row = tbody.insertRow();
+		row.innerHTML = '<td colspan="16" style="text-align:center; color: var(--muted);">Nenhuma carga movida para crédito de fornecedor.</td>';
+		if (totalSaldoEl) totalSaldoEl.innerText = 'R$ 0,00';
+		return;
+	}
+
+	creditos.forEach(item => {
+		item.valorPago = _normalizeDecimalString(String(item.valorPago || item.totalStr || '0'));
+		item.produtoOriginal = item.produtoOriginal || item.produto || 'GC';
+		item.novoProduto = item.novoProduto || item.produto || item.produtoOriginal || 'GC';
+		item.novoVolumeNorm = _normalizeDecimalString(String(item.novoVolumeNorm || item.volumeNorm || '0'));
+		item.novoLitrosStr = multiplyDecimalStrings(item.novoVolumeNorm, '1000');
+		item.novoValorNorm = _normalizeDecimalString(String(item.novoValorNorm || item.valorNorm || '0'));
+		item.novoTotalStr = _normalizeDecimalString(String(item.novoTotalStr || multiplyDecimalStrings(item.novoLitrosStr || '0', item.novoValorNorm || '0')));
+		const saldoStr = getCreditoSaldo(item);
+		totalSaldo = addDecimalStrings(totalSaldo, saldoStr);
+		const resumo = getCreditoResumo(saldoStr);
+		const row = tbody.insertRow();
+		row.innerHTML = `
+			<td><input type="checkbox" data-credito-id="${item.id}" onchange="toggleSelectCredito('${item.id}', this.checked)" ${item.selected ? 'checked' : ''}></td>
+			<td>${escapeHtmlAttr(item.unidade || '')}</td>
+			<td><input type="date" value="${String(item.data || '').slice(0,10)}" onchange="updateCreditoDateById('${item.id}', this.value)" style="width:120px;" /></td>
+			<td>${escapeHtmlAttr(item.distribuidora || '')}</td>
+			<td><input type="text" value="${escapeHtmlAttr(item.motorista || '')}" onchange="setCreditoMotorista('${item.id}', this.value)" style="width:120px;" /></td>
+			<td>${escapeHtmlAttr(item.produtoOriginal || '')}</td>
+			<td>
+				<select onchange="setCreditoProduto('${item.id}', this.value)">
+					<option value="GC" ${item.novoProduto === 'GC' ? 'selected' : ''}>GC</option>
+					<option value="GAD" ${item.novoProduto === 'GAD' ? 'selected' : ''}>GAD</option>
+					<option value="S-500" ${item.novoProduto === 'S-500' ? 'selected' : ''}>S-500</option>
+					<option value="S-10" ${item.novoProduto === 'S-10' ? 'selected' : ''}>S-10</option>
+					<option value="ETANOL" ${item.novoProduto === 'ETANOL' ? 'selected' : ''}>ETANOL</option>
+				</select>
+			</td>
+			<td>${item.volumeNorm || '0'}</td>
+			<td><input type="number" step="0.001" value="${String(item.novoVolumeNorm || '0')}" onchange="updateCreditoVolumeById('${item.id}', this.value)" style="width:90px;" /></td>
+			<td>${formatNumberFromDecimalString(item.litrosStr || '0')}</td>
+			<td>${formatNumberFromDecimalString(item.novoLitrosStr || '0')}</td>
+			<td>${formatarMoedaFromDecimalString(item.valorPago || item.totalStr || '0')}</td>
+			<td><input type="number" step="0.0001" value="${String(item.novoValorNorm || '0')}" onchange="updateCreditoValorById('${item.id}', this.value)" style="width:90px;" /></td>
+			<td>${formatarMoedaFromDecimalString(item.novoTotalStr || '0')}</td>
+			<td class="${resumo.tipo === 'positivo' ? 'credito-positivo' : resumo.tipo === 'negativo' ? 'credito-negativo' : 'credito-zero'}">${resumo.label}: ${resumo.valor}</td>
+			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#10b981;" onclick="desfazerCredito('${item.id}')">Voltar</button><button class="delete-btn" onclick="removerCredito('${item.id}')">Excluir</button></td>
+		`;
+	});
+
+	if (totalSaldoEl) totalSaldoEl.innerText = formatarMoedaFromDecimalString(totalSaldo);
+	renderTabelaSaldoCredito();
+	saveState();
+}
+
+function moverParaCredito(id) {
+	const entry = entries.find(e => String(e.id) === String(id));
+	if (!entry || entry.removed) return alert('Carga não encontrada');
+
+	creditos.push({
+		id: entry.id,
+		unidade: entry.unidade,
+		etiqueta: entry.etiqueta || '',
+		data: entry.data || '',
+		distribuidora: entry.distribuidora,
+		motorista: entry.motorista || '',
+		produtoOriginal: entry.produto,
+		produto: entry.produto,
+		novoProduto: entry.produto,
+		volumeNorm: entry.volumeNorm,
+		novoVolumeNorm: _normalizeDecimalString(String(entry.volumeNorm || '0')),
+		litrosStr: entry.litrosStr,
+		novoLitrosStr: _normalizeDecimalString(String(entry.litrosStr || '0')),
+		valorNorm: entry.valorNorm,
+		totalStr: entry.totalStr,
+		valorPago: _normalizeDecimalString(String(entry.totalStr || '0')),
+		novoValorNorm: _normalizeDecimalString(String(entry.valorNorm || '0')),
+		novoTotalStr: _normalizeDecimalString(String(entry.totalStr || '0')),
+		selected: false,
+		removed: false
+	});
+
+	entry.removed = true;
+	renderTable();
+	renderTabelaCredito();
+}
+
+function getCreditoPositivoItems() {
+	return creditos.filter(item => {
+		const saldo = _normalizeDecimalString(String(getCreditoSaldo(item) || '0'));
+		return saldo.startsWith('-') === false && saldo !== '0';
+	});
+}
+
+function renderTabelaSaldoCredito() {
+	const tbody = document.querySelector('#tabelaSaldoCredito tbody');
+	if (!tbody) return;
+	tbody.innerHTML = '';
+	const groups = {};
+	getCreditoPositivoItems().forEach(item => {
+		const saldo = _normalizeDecimalString(String(getCreditoSaldo(item) || '0'));
+		if (saldo === '0' || saldo.startsWith('-')) return;
+		const key = `${String(item.unidade || '').trim()}|||${String(item.distribuidora || '').trim()}`;
+		if (!groups[key]) {
+			groups[key] = { unidade: item.unidade || '', distribuidora: item.distribuidora || '', saldo: '0' };
+		}
+		groups[key].saldo = addDecimalStrings(groups[key].saldo, saldo);
+	});
+
+	const rows = Object.values(groups);
+	if (!rows.length) {
+		const row = tbody.insertRow();
+		row.innerHTML = '<td colspan="3" style="text-align:center; color: var(--muted);">Nenhum saldo de crédito disponível.</td>';
+		return;
+	}
+
+	rows.forEach(rowData => {
+		const row = tbody.insertRow();
+		row.innerHTML = `
+			<td>${escapeHtmlAttr(rowData.unidade)}</td>
+			<td>${escapeHtmlAttr(rowData.distribuidora)}</td>
+			<td>${formatarMoedaFromDecimalString(rowData.saldo)}</td>
+		`;
+	});
+
+	const labels = rows.map(r => `${r.unidade} / ${r.distribuidora}`);
+	const data = rows.map(r => Number(parseFloat(r.saldo) || 0));
+	const ctx = document.getElementById('saldoCreditoChart');
+	if (!ctx) return;
+
+	if (saldoCreditoChart) {
+		saldoCreditoChart.destroy();
+	}
+
+	saldoCreditoChart = new Chart(ctx, {
+		type: 'bar',
+		data: {
+			labels,
+			datasets: [{
+				label: 'Saldo em crédito',
+				data,
+				backgroundColor: ['#10b981','#2563eb','#f59e0b','#8b5cf6','#ef4444','#06b6d4'],
+				borderRadius: 6
+			}]
+		},
+		options: {
+			responsive: true,
+			maintainAspectRatio: false,
+			scales: {
+				y: {
+					beginAtZero: true,
+					ticks: {
+						callback: function(value) { return 'R$ ' + Number(value).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+					}
+				}
+			},
+			plugins: {
+				legend: { display: false }
+			}
+		}
+	});
+}
+
+function setCreditoProduto(id, produto) {
+	const item = creditos.find(i => String(i.id) === String(id));
+	if (!item) return;
+	item.novoProduto = String(produto || item.produtoOriginal || 'GC');
+	item.produto = item.novoProduto;
+	saveState();
+	renderTabelaCredito();
+}
+
+function setCreditoMotorista(id, motorista) {
+	const item = creditos.find(i => String(i.id) === String(id));
+	if (!item) return;
+	item.motorista = String(motorista || '').trim();
+	saveState();
+	renderTabelaCredito();
+}
+
+function updateCreditoDateById(id, dateValue) {
+	const selectedItems = creditos.filter(i => i.selected);
+	const targetItems = selectedItems.length > 0
+		? selectedItems
+		: [creditos.find(i => String(i.id) === String(id))].filter(Boolean);
+	if (!targetItems.length) return;
+
+	const normalized = normalizeDateValue(dateValue);
+	if (!normalized || !isValidMonthDay(normalized)) {
+		alert('Data inválida');
+		renderTabelaCredito();
+		return;
+	}
+
+	targetItems.forEach(item => {
+		item.data = normalized;
+	});
+
+	saveState();
+	renderTabelaCredito();
+}
+
+function toggleSelectCredito(id, checked) {
+	const item = creditos.find(i => String(i.id) === String(id));
+	if (!item) return;
+	item.selected = Boolean(checked);
+	saveState();
+	renderTabelaCredito();
+}
+
+function toggleSelectAllCredito(checkbox) {
+	const checked = Boolean(checkbox.checked);
+	creditos.forEach(item => item.selected = checked);
+	saveState();
+	renderTabelaCredito();
+}
+
+function clearCreditoSelection() {
+	creditos.forEach(item => item.selected = false);
+	const chk = document.getElementById('selectAllCreditoCheckbox');
+	if (chk) chk.checked = false;
+	saveState();
+	renderTabelaCredito();
+}
+
+function updateCreditoVolumeById(id, valorRaw) {
+	const selectedItems = creditos.filter(i => i.selected);
+	const targetItems = selectedItems.length > 0
+		? selectedItems
+		: [creditos.find(i => String(i.id) === String(id))].filter(Boolean);
+	if (!targetItems.length) return;
+
+	const novo = _normalizeDecimalString(String(valorRaw ?? ''));
+	if (novo === '0' && String(valorRaw ?? '').trim() !== '0') {
+		alert('Volume inválido');
+		renderTabelaCredito();
+		return;
+	}
+	
+	targetItems.forEach(item => {
+		item.novoVolumeNorm = novo;
+		item.novoLitrosStr = multiplyDecimalStrings(item.novoVolumeNorm, '1000');
+		item.novoTotalStr = multiplyDecimalStrings(item.novoLitrosStr, item.novoValorNorm);
+	});
+	
+	saveState();
+	renderTabelaCredito();
+}
+
+function updateCreditoValorById(id, valorRaw) {
+	const selectedItems = creditos.filter(i => i.selected);
+	const targetItems = selectedItems.length > 0
+		? selectedItems
+		: [creditos.find(i => String(i.id) === String(id))].filter(Boolean);
+	if (!targetItems.length) return;
+
+	const novo = _normalizeDecimalString(String(valorRaw ?? ''));
+	if (novo === '0' && String(valorRaw ?? '').trim() !== '0') {
+		alert('Valor inválido');
+		renderTabelaCredito();
+		return;
+	}
+	
+	targetItems.forEach(item => {
+		item.novoValorNorm = novo;
+		item.novoTotalStr = multiplyDecimalStrings(item.novoLitrosStr, item.novoValorNorm);
+	});
+	
+	saveState();
+	renderTabelaCredito();
+}
+
+function updateCreditoPago(id, valorRaw) {
+	const item = creditos.find(i => String(i.id) === String(id));
+	if (!item) return;
+	const novo = _normalizeDecimalString(String(valorRaw ?? ''));
+	if (novo === '0' && String(valorRaw ?? '').trim() !== '0') {
+		alert('Valor inválido');
+		renderTabelaCredito();
+		return;
+	}
+	item.valorPago = novo;
+	saveState();
+	renderTabelaCredito();
+}
+
+function desfazerCredito(id) {
+	const index = creditos.findIndex(i => String(i.id) === String(id));
+	if (index === -1) return;
+	const item = creditos[index];
+	creditos.splice(index, 1);
+	const entry = entries.find(e => String(e.id) === String(id));
+	if (entry) {
+		entry.removed = false;
+	}
+	renderTable();
+	renderTabelaCredito();
+}
+
+function removerCredito(id) {
+	const index = creditos.findIndex(i => String(i.id) === String(id));
+	if (index === -1) return;
+	creditos.splice(index, 1);
+	const entry = entries.find(e => String(e.id) === String(id));
+	if (entry) {
+		entry.removed = true;
+	}
+	renderTabelaCredito();
+}
+
 function renderTabelaBoleto() {
 	const tbody = document.querySelector('#tabelaBoleto tbody');
 	const msgVazia = document.getElementById('mensagemVazia');
@@ -997,8 +1617,9 @@ function renderTabelaBoleto() {
 					<option value="Amanhã" ${boleto.etiqueta === 'Amanhã' ? 'selected' : ''}>Amanhã</option>
 				</select>
 			</td>
-			<td>${boleto.data || ''}</td>
+			<td><input type="date" value="${String(boleto.data || '').slice(0, 10)}" onchange="updateBoletoDateById('${boleto.id}', this.value)" style="width:120px;" /></td>
 			<td>${boleto.distribuidora}</td>
+			<td><input type="text" value="${escapeHtmlAttr(boleto.motorista || '')}" onchange="setBoletoMotorista('${boleto.id}', this.value)" style="width:120px;" /></td>
 			<td>${boleto.produto}</td>
 			<td>${boleto.volumeNorm}</td>
 			<td>${formatNumberFromDecimalString(boleto.litrosStr)}</td>
@@ -1037,17 +1658,63 @@ function setBoletoUnidade(id, unidade) {
 	renderTabelaBoleto();
 }
 
-function updateBoletoValorById(id, valorRaw) {
+function setBoletoMotorista(id, motorista) {
 	const boleto = boletos.find(b => String(b.id) === String(id));
 	if (!boleto) return;
+	boleto.motorista = String(motorista || '').trim();
+	saveState();
+	renderTabelaBoleto();
+}
+
+function setBoletoLabel(id, label) {
+	const boleto = boletos.find(b => String(b.id) === String(id));
+	if (!boleto) return;
+	boleto.etiqueta = String(label || '');
+	saveState();
+	renderTabelaBoleto();
+}
+
+function updateBoletoValorById(id, valorRaw) {
+	const selectedBoletos = boletos.filter(b => b.selected);
+	const targetBoletos = selectedBoletos.length > 0
+		? selectedBoletos
+		: [boletos.find(b => String(b.id) === String(id))].filter(Boolean);
+	if (!targetBoletos.length) return;
+
 	const novo = _normalizeDecimalString(String(valorRaw ?? ''));
 	if (novo === '0' && String(valorRaw ?? '').trim() !== '0') {
 		alert('Valor inválido');
 		renderTabelaBoleto();
 		return;
 	}
-	boleto.valorNorm = novo;
-	boleto.totalStr = multiplyDecimalStrings(boleto.litrosStr, boleto.valorNorm);
+
+	targetBoletos.forEach(boleto => {
+		boleto.valorNorm = novo;
+		boleto.totalStr = multiplyDecimalStrings(boleto.litrosStr, boleto.valorNorm);
+	});
+
+	saveState();
+	renderTabelaBoleto();
+}
+
+function updateBoletoDateById(id, dateValue) {
+	const selectedBoletos = boletos.filter(b => b.selected);
+	const targetBoletos = selectedBoletos.length > 0
+		? selectedBoletos
+		: [boletos.find(b => String(b.id) === String(id))].filter(Boolean);
+	if (!targetBoletos.length) return;
+
+	const normalized = normalizeDateValue(dateValue);
+	if (!normalized || !isValidMonthDay(normalized)) {
+		alert('Data inválida');
+		renderTabelaBoleto();
+		return;
+	}
+
+	targetBoletos.forEach(boleto => {
+		boleto.data = normalized;
+	});
+
 	saveState();
 	renderTabelaBoleto();
 }
