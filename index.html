@@ -9,6 +9,34 @@
 </head>
 <body>
 
+<div id="authGate" class="auth-gate">
+  <div class="auth-card">
+    <div class="auth-card-header">
+      <img src="cropped-WK.png" alt="WK Logo" class="auth-logo">
+      <div>
+        <h2>WK Compras</h2>
+        <p>Entre com seu e-mail e senha para acessar o sistema compartilhado.</p>
+      </div>
+    </div>
+    <form id="loginForm" class="auth-form" onsubmit="handleLoginSubmit(event)">
+      <label for="loginEmail">E-mail</label>
+      <input type="email" id="loginEmail" autocomplete="email" placeholder="seuemail@empresa.com" required>
+      <label for="loginPassword">Senha</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" placeholder="Sua senha" required>
+      <button type="submit" id="loginButton">Entrar</button>
+      <div id="authMessage" class="auth-message" aria-live="polite"></div>
+    </form>
+  </div>
+</div>
+
+<div id="sessionBar" class="session-bar" style="display:none;">
+  <div class="session-bar-info">
+    <strong id="sessionUserName">Usuário</strong>
+    <span id="sessionUserRole">USUARIO</span>
+  </div>
+  <button type="button" onclick="logout()">Sair</button>
+</div>
+
 <div class="logo-container">
   <img src="cropped-WK.png" alt="WK Logo" class="logo">
 </div>
@@ -131,6 +159,10 @@
               <label>Filtrar Distribuidora</label>
               <input type="text" id="filterDistribuidora" placeholder="busca por distribuidora">
             </div>
+            <div style="flex:1;min-width:180px;">
+              <label>Filtrar Motorista</label>
+              <input type="text" id="filterMotorista" placeholder="busca por motorista">
+            </div>
             <div style="width:220px;">
               <label>Filtrar Produto</label>
               <select id="filterProduto">
@@ -199,6 +231,10 @@
             <div style="flex:1;min-width:180px;">
               <label>Filtrar Distribuidora</label>
               <input type="text" id="filterBoletoDistribuidora" placeholder="busca por distribuidora">
+            </div>
+            <div style="flex:1;min-width:180px;">
+              <label>Filtrar Motorista</label>
+              <input type="text" id="filterBoletoMotorista" placeholder="busca por motorista">
             </div>
             <div style="width:220px;">
               <label>Filtrar Produto</label>
@@ -441,6 +477,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
   <script src="script.js"></script>
 
 </body>

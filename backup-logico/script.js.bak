@@ -67,14 +67,6 @@ function normalizeDateForDb(value) {
 	return normalized || null;
 }
 
-function getTodayDateString() {
-	const now = new Date();
-	const year = now.getFullYear();
-	const month = String(now.getMonth() + 1).padStart(2, '0');
-	const day = String(now.getDate()).padStart(2, '0');
-	return `${year}-${month}-${day}`;
-}
-
 class WKComprasUtils {
 	static produtoFiltra(entryProduto, filtroProduto) {
 		const normalize = str => String(str || '').toLowerCase().replace(/[-\s]/g, '');
@@ -610,7 +602,7 @@ function mapEntryToRemoteRow(entry) {
 		unidade_id: unit ? unit.id : null,
 		unidade_nome_snapshot: String(entry.unidade || ''),
 		cnpj_snapshot: getCnpjForUnidade(entry.unidade),
-		data: normalizeDateForDb(entry.data) || getTodayDateString(),
+		data: normalizeDateForDb(entry.data),
 		etiqueta: String(entry.etiqueta || ''),
 		distribuidora: String(entry.distribuidora || ''),
 		motorista: String(entry.motorista || ''),
@@ -693,7 +685,7 @@ class WKComprasSupabaseSyncController {
 		if (!this.isReady() || wkRemoteHydrating) return;
 		if (wkRemoteSyncTimer) clearTimeout(wkRemoteSyncTimer);
 		wkRemoteSyncTimer = setTimeout(() => {
-			this.syncNow().catch(err => reportSupabaseSyncError('Erro ao sincronizar com Supabase', err));
+			this.syncNow().catch(err => console.error('Erro ao sincronizar com Supabase:', err));
 		}, 450);
 	}
 
@@ -701,7 +693,7 @@ class WKComprasSupabaseSyncController {
 		if (!this.isReady() || wkRemoteHydrating) return;
 		if (wkRemoteReloadTimer) clearTimeout(wkRemoteReloadTimer);
 		wkRemoteReloadTimer = setTimeout(() => {
-			this.loadRemoteState().catch(err => reportSupabaseSyncError('Erro ao recarregar do Supabase', err));
+			this.loadRemoteState().catch(err => console.error('Erro ao recarregar do Supabase:', err));
 		}, 300);
 	}
 
@@ -995,21 +987,8 @@ function saveState() {
 	return result;
 }
 
-function saveLocalStateOnly() {
-	return wkComprasPersistenceController.saveState();
-}
-
 function loadState() {
 	return wkComprasPersistenceController.loadState();
-}
-
-function reportSupabaseSyncError(context, error) {
-	const message = error && error.message ? error.message : String(error || 'Erro desconhecido');
-	console.error(`${context}:`, error);
-	if (typeof setAuthMessage === 'function') {
-		setAuthMessage(`${context}: ${message}`);
-	}
-	return message;
 }
 
 function updateAuthUi(connected) {
@@ -1557,7 +1536,7 @@ function importarPlanilha() {
 	if (!input || !input.files || input.files.length === 0) { alert('Escolha um arquivo primeiro.'); return; }
 	const file = input.files[0];
 	const reader = new FileReader();
-	reader.onload = async function(e) {
+	reader.onload = function(e) {
 		try {
 			const data = new Uint8Array(e.target.result);
 			const workbook = XLSX.read(data, { type: 'array' });
@@ -1586,7 +1565,7 @@ function importarPlanilha() {
 
 				const unidade = findVal(['unidade','unit','unit name','estabelecimento','estação','station']) || (Object.values(row)[0] || '');
 				const distribuidora = findVal(['distribuidora','distributor','fornecedor','supplier']) || (Object.values(row)[1] || '');
-				const dataImport = normalizeDateValue(findVal(['data','date','dt','dia','data carga','data da carga']) || findDateValueInRow(row)) || getTodayDateString();
+				const dataImport = normalizeDateValue(findVal(['data','date','dt','dia','data carga','data da carga']) || findDateValueInRow(row));
 				const motoristaRaw = findVal(['motorista','driver','nome motorista','motorista nome','motorista nome completo']) || (Object.values(row)[3] || '');
 				const produto = findVal(['produto','product','produto/serviço','material']) || (Object.values(row)[4] || '');
 				let volume = findVal(['volume','vol','quantidade','qtd','volume (m)','volume m']);
@@ -1632,20 +1611,20 @@ function importarPlanilha() {
 			console.log('entries length after import (preview 5):', entries.length, entries.slice(0,5));
 			// force a full render and save in case previous renders were skipped
 			renderTable();
-			saveLocalStateOnly();
-			if (wkSupabaseSyncController) {
-				await wkSupabaseSyncController.syncNow();
-			}
+			saveState();
 			if (added === 0) {
 				let msg = 'Nenhuma linha importada.';
 				if (skipped > 0) msg += ' Linhas puladas: ' + skipped + '. Veja console para amostra.';
 				alert(msg);
 			} else {
 				alert('Importação concluída. Linhas adicionadas: ' + added + (skipped ? (', puladas: ' + skipped) : ''));
+				if (currentSupabaseUser && wkSupabaseSyncController) {
+					wkSupabaseSyncController.syncResumoVolumeImport().catch(error => console.error('Erro ao sincronizar resumo:', error));
+				}
 			}
 			if (sample.length) console.warn('Amostra de linhas puladas:', sample);
 		} catch (err) {
-			reportSupabaseSyncError('Erro ao ler/importar a planilha', err);
+			console.error(err);
 			alert('Erro ao ler a planilha: ' + err.message);
 		}
 	};
@@ -1657,7 +1636,7 @@ function importarResumoVolume() {
 	if (!input || !input.files || input.files.length === 0) { alert('Escolha um arquivo de resumo primeiro.'); return; }
 	const file = input.files[0];
 	const reader = new FileReader();
-	reader.onload = async function(e) {
+	reader.onload = function(e) {
 		try {
 			const data = new Uint8Array(e.target.result);
 			const workbook = XLSX.read(data, { type: 'array' });
@@ -1695,12 +1674,9 @@ function importarResumoVolume() {
 			});
 
 			renderResumoVolumeTable();
-			saveLocalStateOnly();
-			if (wkSupabaseSyncController) {
-				await wkSupabaseSyncController.syncResumoVolumeImport();
-			}
+			saveState();
 		} catch (err) {
-			reportSupabaseSyncError('Erro ao ler/importar o resumo', err);
+			console.error(err);
 			alert('Erro ao ler o resumo: ' + err.message);
 		}
 	};
@@ -1767,7 +1743,7 @@ function limparResumoVolume() {
 	const fileInput = document.getElementById('fileInputResumo');
 	if (fileInput) fileInput.value = '';
 	renderVolumeSummary();
-	saveLocalStateOnly();
+	saveState();
 	if (currentSupabaseUser && wkSupabaseSyncController) {
 		wkSupabaseSyncController.syncResumoVolumeImport().catch(error => console.error('Erro ao sincronizar resumo vazio:', error));
 	}
