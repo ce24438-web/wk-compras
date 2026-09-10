@@ -918,6 +918,10 @@ class WKComprasSupabaseSyncController {
 	}
 
 	startRealtime() {
+		// Proteção temporária: não recarrega o estado remoto automaticamente.
+		// O realtime estava substituindo o estado local por uma leitura remota e
+		// fazendo cargas desaparecerem após eventos de sincronização.
+		return;
 		if (!this.client || !currentSupabaseUser) return;
 		this.stopRealtime();
 		wkSupabaseRealtimeChannel = this.client
@@ -1540,7 +1544,6 @@ function adicionarCargaComDados(unidade, data, etiqueta, distribuidora, motorist
 
 	entries.push(entry);
 	renderTable();
-	saveState();
 }
 
 function adicionarCargaBoleto() {
@@ -1595,7 +1598,6 @@ function adicionarCargaBoleto() {
 	document.getElementById('boletoValor').value = '';
 
 	renderTabelaBoleto();
-	saveState();
 }
 
 function importarPlanilha() {
