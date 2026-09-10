@@ -1084,75 +1084,6 @@ async function handleLoginSubmit(event) {
 	setAuthMessage('Login realizado.', false);
 }
 
-
-function getSupabaseRecoveryRedirectUrl() {
-	return `${window.location.origin}${window.location.pathname}`;
-}
-
-async function sendPasswordRecovery() {
-	if (!wkSupabaseClient) {
-		setAuthMessage('Supabase não está configurado neste ambiente.');
-		return;
-	}
-	const emailInput = document.getElementById('loginEmail');
-	const email = emailInput ? String(emailInput.value || '').trim() : '';
-	if (!email) {
-		setAuthMessage('Digite seu e-mail para receber o link de recuperação.');
-		if (emailInput) emailInput.focus();
-		return;
-	}
-	setAuthMessage('Enviando link de recuperação...', false);
-	const { error } = await wkSupabaseClient.auth.resetPasswordForEmail(email, {
-		redirectTo: getSupabaseRecoveryRedirectUrl()
-	});
-	if (error) {
-		setAuthMessage(error.message || 'Não foi possível enviar o link de recuperação.');
-		return;
-	}
-	setAuthMessage('Link de recuperação enviado para seu e-mail. Verifique também o Spam.', false);
-}
-
-async function handlePasswordRecovery() {
-	if (!wkSupabaseClient) return;
-	setAuthMessage('Link de recuperação recebido. Defina sua nova senha.', false);
-	const password = window.prompt('Digite sua NOVA senha (mínimo de 6 caracteres):');
-	if (password === null) return;
-	if (password.length < 6) {
-		setAuthMessage('A nova senha precisa ter pelo menos 6 caracteres.');
-		return;
-	}
-	const confirmation = window.prompt('Digite a nova senha novamente para confirmar:');
-	if (confirmation === null) return;
-	if (password !== confirmation) {
-		setAuthMessage('As senhas não conferem. Tente novamente.');
-		return;
-	}
-	const { error } = await wkSupabaseClient.auth.updateUser({ password });
-	if (error) {
-		setAuthMessage(error.message || 'Não foi possível atualizar a senha.');
-		return;
-	}
-	await wkSupabaseClient.auth.signOut();
-	currentSupabaseSession = null;
-	currentSupabaseProfile = null;
-	currentSupabaseUser = null;
-	if (wkSupabaseSyncController) wkSupabaseSyncController.stopRealtime();
-	updateAuthUi(false);
-	setAuthMessage('Senha alterada com sucesso! Agora entre com sua nova senha.', false);
-}
-
-function setupPasswordRecoveryUi() {
-	const passwordInput = document.getElementById('loginPassword');
-	if (!passwordInput || document.getElementById('forgotPasswordButton')) return;
-	const button = document.createElement('button');
-	button.type = 'button';
-	button.id = 'forgotPasswordButton';
-	button.textContent = 'Esqueci minha senha';
-	button.style.cssText = 'display:block;margin:10px auto 0;background:none;border:0;padding:4px;color:var(--brand-blue-800);cursor:pointer;text-decoration:underline;font:inherit;';
-	button.addEventListener('click', sendPasswordRecovery);
-	passwordInput.insertAdjacentElement('afterend', button);
-}
-
 async function logout() {
 	if (wkSupabaseClient) {
 		await wkSupabaseClient.auth.signOut();
@@ -1201,11 +1132,6 @@ async function initializeSupabaseApp() {
 		wkSupabaseClient.auth.onAuthStateChange(async (_event, session) => {
 			currentSupabaseSession = session || null;
 			currentSupabaseUser = session?.user || null;
-			if (_event === 'PASSWORD_RECOVERY') {
-				updateAuthUi(false);
-				setTimeout(() => { handlePasswordRecovery().catch(error => { console.error(error); setAuthMessage('Erro ao processar a recuperação de senha.'); }); }, 0);
-				return;
-			}
 			if (!session) {
 				currentSupabaseProfile = null;
 				if (wkSupabaseSyncController) wkSupabaseSyncController.stopRealtime();
@@ -2793,7 +2719,6 @@ window.addEventListener('beforeunload', function (event) {
 });
 
 window.addEventListener('load', function () {
-	setupPasswordRecoveryUi();
 	initializeSupabaseApp().catch(error => {
 		console.error(error);
 		setAuthMessage('Erro ao inicializar o login.');
