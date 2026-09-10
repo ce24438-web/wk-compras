@@ -1942,7 +1942,6 @@ function moverParaBoleto(id) {
 		etiqueta: entry.etiqueta || '',
 		data: entry.data || '',
 		selected: false,
-		removed: false,
 		distribuidora: entry.distribuidora,
 		motorista: entry.motorista || '',
 		produto: entry.produto,
@@ -2336,7 +2335,6 @@ function renderTabelaBoleto() {
 	let visibleCount = 0;
 	
 	boletos.forEach(boleto => {
-		if (boleto.removed) return;
 		if (fUnidade && !String(boleto.unidade || '').toLowerCase().includes(fUnidade)) return;
 		if (fDistrib && !String(boleto.distribuidora || '').toLowerCase().includes(fDistrib)) return;
 		if (fMotor && !String(boleto.motorista || '').toLowerCase().includes(fMotor)) return;
@@ -2510,8 +2508,7 @@ function desfazerBoleto(id) {
 	const boletoIndex = boletos.findIndex(b => String(b.id) === String(id));
 	if (boletoIndex === -1) return;
 	
-	boletos[boletoIndex].removed = false;
-	boletos[boletoIndex].selected = false;
+	boletos.splice(boletoIndex, 1);
 	
 	const entry = entries.find(e => String(e.id) === String(id));
 	if (entry) {
@@ -2520,32 +2517,25 @@ function desfazerBoleto(id) {
 	
 	renderTable();
 	renderTabelaBoleto();
-	saveState();
 }
 
 function removerBoleto(id) {
 	const boletoIndex = boletos.findIndex(b => String(b.id) === String(id));
 	if (boletoIndex === -1) return;
 	
-	// Soft delete: mantém o registro local para que o Supabase receba o tombstone
-	// e não recrie a carga em uma sincronização posterior.
-	boletos[boletoIndex].removed = true;
-	boletos[boletoIndex].selected = false;
+	boletos.splice(boletoIndex, 1);
 	
 	const entryIndex = entries.findIndex(e => String(e.id) === String(id));
 	if (entryIndex !== -1) {
 		entries[entryIndex].removed = true;
 	}
 	
-	renderTable();
 	renderTabelaBoleto();
-	saveState();
 }
 
 function getBoletoExportRows() {
 	const groups = {};
 	boletos.forEach(boleto => {
-		if (boleto.removed) return;
 		const key = `${String(boleto.distribuidora || '').trim().toLowerCase()}|||${String(boleto.unidade || '').trim().toLowerCase()}`;
 		if (!groups[key]) {
 			groups[key] = {
@@ -2565,7 +2555,7 @@ function getBoletoExportRows() {
 }
 
 function exportBoletoToCsv() {
-	if (!boletos.some(b => !b.removed)) { alert('Não há cargas no boleto para exportar.'); return; }
+	if (boletos.length === 0) { alert('Não há cargas no boleto para exportar.'); return; }
 
 	const rows = getBoletoExportRows();
 	if (!rows.length) { alert('Não há dados para exportar.'); return; }
@@ -2582,7 +2572,7 @@ function exportBoletoToCsv() {
 }
 
 function exportBoletoToExcel() {
-	if (!boletos.some(b => !b.removed)) { alert('Não há cargas no boleto para exportar.'); return; }
+	if (boletos.length === 0) { alert('Não há cargas no boleto para exportar.'); return; }
 	
 	const rows = getBoletoExportRows();
 	if (!rows.length) { alert('Não há dados para exportar.'); return; }
