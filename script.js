@@ -2018,7 +2018,7 @@ function importarPreenchimentoAutomatico() {
 			});
 
 			let unmatched = 0;
-			preenchimentoRows = rows.map(row => {
+			const filledRows = rows.map(row => {
 				const unidade = getPreenchimentoValue(row, unidadeHeader);
 				const motorista = getPreenchimentoValue(row, motoristaHeader);
 				const placa = getPreenchimentoValue(row, placaHeader);
@@ -2039,6 +2039,16 @@ function importarPreenchimentoAutomatico() {
 					}
 				});
 				return output;
+			});
+			preenchimentoRows = [];
+			let previousDriver = '';
+			filledRows.forEach(row => {
+				const currentDriver = normalizeLookupText(row[motoristaHeader] || '');
+				if (preenchimentoRows.length && currentDriver && previousDriver && currentDriver !== previousDriver) {
+					preenchimentoRows.push({});
+				}
+				preenchimentoRows.push(row);
+				if (currentDriver) previousDriver = currentDriver;
 			});
 			renderPreenchimentoTable();
 			saveLocalStateOnly();
