@@ -2062,9 +2062,10 @@ function importarPreenchimentoAutomatico() {
 			saveLocalStateOnly();
 			const status = document.getElementById('preenchimentoStatus');
 			if (status) {
-				status.textContent = !frota.length
+				const statusText = !frota.length
 					? `${preenchimentoRows.length} linhas processadas, mas a tabela de frota não está carregada no Supabase.`
 					: `${preenchimentoRows.length} linhas processadas.${unmatched ? ` ${unmatched} sem vínculo encontrado na frota.` : ' Todos os vínculos foram encontrados.'}`;
+				status.innerHTML = `<span class="preenchimento-status-dot"></span><span>${statusText}</span>`;
 			}
 		} catch (error) {
 			console.error(error);
@@ -2093,7 +2094,7 @@ function limparPreenchimentoAutomatico() {
 	if (input) input.value = '';
 	renderPreenchimentoTable();
 	const status = document.getElementById('preenchimentoStatus');
-	if (status) status.textContent = 'Nenhuma planilha processada.';
+	if (status) status.innerHTML = '<span class="preenchimento-status-dot"></span><span>Nenhuma planilha processada.</span>';
 	saveLocalStateOnly();
 }
 

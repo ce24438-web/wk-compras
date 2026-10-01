@@ -446,6 +446,157 @@ h1 {
 	border: 0;
 }
 
+.preenchimento-card {
+	border-left-color: var(--brand-blue-600);
+	background: linear-gradient(145deg, rgba(255,255,255,0.98), rgba(241,247,255,0.94));
+}
+
+.preenchimento-heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 20px;
+	padding-bottom: 20px;
+	border-bottom: 1px solid rgba(11, 97, 216, 0.12);
+}
+
+.preenchimento-heading h2 {
+	margin: 4px 0 6px;
+	text-align: left;
+	color: var(--brand-blue-800);
+}
+
+.preenchimento-heading p {
+	margin: 0;
+	color: var(--muted);
+	font-size: 14px;
+}
+
+.preenchimento-eyebrow {
+	color: var(--brand-red);
+	font-size: 11px;
+	font-weight: 800;
+	letter-spacing: 1.4px;
+	text-transform: uppercase;
+}
+
+.preenchimento-mark {
+	display: grid;
+	place-items: center;
+	width: 46px;
+	height: 46px;
+	border-radius: 14px;
+	background: linear-gradient(135deg, var(--brand-blue-800), var(--brand-blue-600));
+	color: #fff;
+	font-size: 24px;
+	font-weight: 800;
+	box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+}
+
+.preenchimento-toolbar {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 18px 0 14px;
+}
+
+.preenchimento-file {
+	flex: 1;
+	min-width: 240px;
+	margin: 0;
+	padding: 12px 14px;
+	border: 1px dashed rgba(11, 97, 216, 0.45);
+	border-radius: 12px;
+	background: rgba(219, 234, 254, 0.34);
+	color: var(--brand-blue-800);
+	text-transform: none;
+}
+
+.preenchimento-file span {
+	display: block;
+	margin-bottom: 7px;
+	font-size: 12px;
+	font-weight: 800;
+	letter-spacing: 0.2px;
+}
+
+.preenchimento-file input {
+	padding: 0;
+	border: 0;
+	box-shadow: none;
+	background: transparent;
+	font-size: 12px;
+}
+
+.preenchimento-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.preenchimento-actions button {
+	margin-top: 0;
+	padding: 11px 14px;
+	font-size: 12px;
+}
+
+.preenchimento-actions .preenchimento-export {
+	background: linear-gradient(135deg, #0f766e, #10b981);
+}
+
+.preenchimento-actions .preenchimento-clear {
+	background: #e11d48;
+}
+
+.preenchimento-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 34px;
+	padding: 8px 12px;
+	border-radius: 10px;
+	background: rgba(226, 232, 240, 0.58);
+	color: #475569;
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.preenchimento-status-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: #94a3b8;
+	box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.16);
+	flex-shrink: 0;
+}
+
+.preenchimento-table-wrap {
+	max-height: 58vh;
+	overflow: auto;
+	border-radius: 16px;
+	box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+}
+
+.preenchimento-table-wrap table {
+	min-width: 980px;
+	margin-top: 0;
+	box-shadow: none;
+	border-radius: 0;
+}
+
+.preenchimento-table-wrap thead th {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	white-space: nowrap;
+}
+
+.preenchimento-table-wrap tbody td {
+	white-space: nowrap;
+	font-size: 12px;
+}
+
 @keyframes slideInDown {
 	from {
 		opacity: 0;
@@ -904,6 +1055,24 @@ tbody tr:hover {
 	.card {
 		padding: 16px;
 		margin-bottom: 16px;
+	}
+
+	.preenchimento-toolbar {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.preenchimento-actions {
+		width: 100%;
+	}
+
+	.preenchimento-actions button {
+		flex: 1;
+	}
+
+	.preenchimento-heading h2 {
+		text-align: left;
+		font-size: 1.3rem;
 	}
 
 	input[type="date"] {

@@ -453,17 +453,34 @@
 
     <!-- TAB PREENCHIMENTO: PREENCHIMENTO AUTOMATICO -->
     <div id="tab-preenchimento" class="tab-content">
-      <div class="card">
-        <h2 style="margin-top:0; color: var(--brand-blue-800);">Preenchimento automático</h2>
-        <div class="muted">Importe uma planilha de cargas. O sistema preencherá CNPJ, CPF e as duas carretas vinculadas à placa.</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px;">
-          <input type="file" id="fileInputPreenchimento" accept=".xlsx,.xls,.csv" />
-          <button onclick="importarPreenchimentoAutomatico()">Importar Planilha</button>
-          <button onclick="exportarPreenchimentoAutomatico()" style="background:#2563eb;">Exportar Excel preenchido</button>
-          <button onclick="limparPreenchimentoAutomatico()" style="background:#ef4444;">Limpar</button>
+      <div class="card preenchimento-card">
+        <div class="preenchimento-heading">
+          <div>
+            <span class="preenchimento-eyebrow">Automação operacional</span>
+            <h2>Preenchimento automático</h2>
+            <p>Enriqueça sua planilha com CNPJ, CPF e carretas vinculadas à placa.</p>
+          </div>
+          <div class="preenchimento-mark">↗</div>
         </div>
-        <div id="preenchimentoStatus" class="muted" style="margin-top:12px;">Nenhuma planilha processada.</div>
-        <div class="table-scroll" style="margin-top:16px;">
+
+        <div class="preenchimento-toolbar">
+          <label class="preenchimento-file">
+            <span>Planilha de entrada</span>
+            <input type="file" id="fileInputPreenchimento" accept=".xlsx,.xls,.csv" />
+          </label>
+          <div class="preenchimento-actions">
+            <button onclick="importarPreenchimentoAutomatico()">Importar planilha</button>
+            <button onclick="exportarPreenchimentoAutomatico()" class="preenchimento-export">Exportar preenchida</button>
+            <button onclick="limparPreenchimentoAutomatico()" class="preenchimento-clear">Limpar</button>
+          </div>
+        </div>
+
+        <div class="preenchimento-status" id="preenchimentoStatus">
+          <span class="preenchimento-status-dot"></span>
+          <span>Nenhuma planilha processada.</span>
+        </div>
+
+        <div class="table-scroll preenchimento-table-wrap">
           <table id="tabelaPreenchimento">
             <thead></thead>
             <tbody></tbody>
