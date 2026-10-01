@@ -2,6 +2,9 @@
 let entries = [];
 let boletos = []; // novo array para cargas no boleto
 let creditos = []; // novo array para acompanhamento de crédito a fornecedor
+let frota = [];
+let preenchimentoHeaders = [];
+let preenchimentoRows = [];
 let saldoCreditoChart = null;
 let resumoVolumeRows = [];
 let entryIdCounter = 1;
@@ -29,11 +32,14 @@ const UNIDADE_CNPJ_MAP = [
 	{ cnpj: '37.489.383/0007-09', aliases: ['BM NIQUELÂNDIA - GO', 'BM NIQUELANDIA - GO', 'BM NIQUELANDIA', 'NIQUELÂNDIA', 'NIQUELANDIA'] },
 	{ cnpj: '05.405.388/0001-24', aliases: ['REGIONAL DERIVADOS'] },
 	{ cnpj: '27.370.739/0001-41', aliases: ['JARAGUÁ - GO', 'JARAGUA - GO', 'JARAGUÁ', 'JARAGUA'] },
+	{ cnpj: '37.489.383/0008-90', aliases: ['BM JATAÍ', 'BM JATAI', 'JATAÍ', 'JATAI'] },
 	{ cnpj: '37.489.383/0002-02', aliases: ['BM CATALÃO - GO', 'BM CATALAO - GO', 'BM CATALAO', 'CATALÃO', 'CATALAO'] },
 	{ cnpj: '37.489.383/0009-70', aliases: ['BM GOIANÉSIA - GO', 'BM GOIANESIA - GO', 'BM GOIANESIA', 'GOIANÉSIA', 'GOIANESIA'] },
 	{ cnpj: '07.557.958/0001-27', aliases: ['KBW'] },
-	{ cnpj: '58.889.718/0002-02', aliases: ['WK 14'] },
-	{ cnpj: '58.889.718/0003-85', aliases: ['REDE DE POSTOS QUERÊNCIA MT', 'REDE DE POSTOS QUERENCIA MT', 'QUERÊNCIA MT', 'QUERENCIA MT'] }
+	{ cnpj: '58.889.918/0002-02', aliases: ['WK 14', 'REDE DE POSTOS WK XIV', 'REDE DE POSTOS WK 14'] },
+	{ cnpj: '58.889.918/0003-85', aliases: ['REDE DE POSTOS QUERÊNCIA MT', 'REDE DE POSTOS QUERENCIA MT', 'REDE DE POSTOS WK QUERÊNCIA', 'REDE DE POSTOS WK QUERENCIA', 'QUERÊNCIA MT', 'QUERENCIA MT'] },
+	{ cnpj: '37.489.383/0011-95', aliases: ['BM CENTRO'] },
+	{ cnpj: '37.489.383/0012-76', aliases: ['BM QUERÊNCIA', 'BM QUERENCIA'] }
 ];
 
 function normalizeLookupText(value) {
@@ -460,6 +466,8 @@ class WKComprasPersistenceController {
 			entries,
 			boletos,
 			creditos,
+			preenchimentoHeaders,
+			preenchimentoRows,
 			resumoVolumeRows,
 			entryIdCounter,
 			activeFilters,
@@ -476,6 +484,8 @@ class WKComprasPersistenceController {
 			if (Array.isArray(state.entries)) entries = state.entries.map(entry => ({ etiqueta: '', ...entry }));
 			if (Array.isArray(state.boletos)) boletos = state.boletos.map(boleto => ({ etiqueta: '', selected: Boolean(boleto.selected), ...boleto }));
 			if (Array.isArray(state.creditos)) creditos = state.creditos.map(item => ({ etiqueta: '', selected: Boolean(item.selected), valorPago: '0', ...item }));
+			if (Array.isArray(state.preenchimentoHeaders)) preenchimentoHeaders = state.preenchimentoHeaders;
+			if (Array.isArray(state.preenchimentoRows)) preenchimentoRows = state.preenchimentoRows;
 			if (Array.isArray(state.resumoVolumeRows)) resumoVolumeRows = state.resumoVolumeRows.map(row => ({ unidade: '', produto: '', total: '0', ...row }));
 			entryIdCounter = typeof state.entryIdCounter === 'number' && state.entryIdCounter > 0 ? state.entryIdCounter : entryIdCounter;
 			activeFilters = state.activeFilters || activeFilters;
@@ -492,6 +502,7 @@ class WKComprasPersistenceController {
 			renderTabelaBoleto();
 			renderTabelaCredito();
 			renderTabelaSaldoCredito();
+			renderPreenchimentoTable();
 			renderResumoVolumeTable();
 			wkComprasLayoutController.renderDistribuidorChart();
 		} catch (err) {
@@ -603,6 +614,19 @@ function mapCreditoRowToLocal(row) {
 	};
 }
 
+function mapFrotaRowToLocal(row) {
+	return {
+		id: String(row.id || ''),
+		categoria: String(row.categoria || 'FROTA'),
+		veiculo: String(row.veiculo || ''),
+		carreta1: String(row.carreta_1 || ''),
+		carreta2: String(row.carreta_2 || ''),
+		motoristaNome: String(row.motorista_nome || ''),
+		motoristaCpf: String(row.motorista_cpf || ''),
+		ativo: row.ativo !== false
+	};
+}
+
 function mapEntryToRemoteRow(entry) {
 	const unit = findUnitByName(entry.unidade);
 	return {
@@ -621,7 +645,9 @@ function mapEntryToRemoteRow(entry) {
 		total: Number.parseFloat(_normalizeDecimalString(String(entry.totalStr || '0'))) || 0,
 		removed: Boolean(entry.removed),
 		removed_at: entry.removed ? new Date().toISOString() : null,
-		removed_by: entry.removed ? (currentSupabaseUser ? currentSupabaseUser.id : null) : null
+		removed_by: entry.removed ? (currentSupabaseUser ? currentSupabaseUser.id : null) : null,
+		created_by: entry.created_by || (currentSupabaseUser ? currentSupabaseUser.id : null),
+		updated_by: currentSupabaseUser ? currentSupabaseUser.id : null
 	};
 }
 
@@ -733,6 +759,18 @@ class WKComprasSupabaseSyncController {
 			const remoteEntries = (entriesResult.data || []).map(mapEntryRowToLocal);
 			const remoteBoletos = (boletosResult.data || []).map(mapBoletoRowToLocal);
 			const remoteCreditos = (creditosResult.data || []).map(mapCreditoRowToLocal);
+			const frotaResult = await this.client
+				.from('frota')
+				.select('*')
+				.eq('ativo', true)
+				.order('categoria', { ascending: true })
+				.order('veiculo', { ascending: true });
+			if (!frotaResult.error) {
+				frota = (frotaResult.data || []).map(mapFrotaRowToLocal);
+			} else {
+				frota = [];
+				console.warn('Tabela de frota ainda não foi criada no Supabase.');
+			}
 
 			let remoteResumoRows = [];
 			const latestImport = Array.isArray(resumoImportResult.data) ? resumoImportResult.data[0] : null;
@@ -752,6 +790,23 @@ class WKComprasSupabaseSyncController {
 				}));
 			}
 
+			const localRaw = localStorage.getItem('wkComprasState');
+			let localState = null;
+			try {
+				localState = localRaw ? JSON.parse(localRaw) : null;
+			} catch (error) {
+				localState = null;
+			}
+			const remoteEntryIds = new Set(remoteEntries.map(entry => String(entry.id)));
+		const pendingLocalEntries = Array.isArray(localState?.entries)
+				? localState.entries.filter(entry => !entry.removed && !remoteEntryIds.has(String(entry.id)))
+				: [];
+			if (pendingLocalEntries.length) {
+				remoteEntries.push(...pendingLocalEntries);
+				entries = remoteEntries;
+				await this.syncNow();
+			}
+
 			entries = remoteEntries;
 			boletos = remoteBoletos;
 			creditos = remoteCreditos;
@@ -764,7 +819,6 @@ class WKComprasSupabaseSyncController {
 			renderResumoVolumeTable();
 			wkComprasLayoutController.renderDistribuidorChart();
 
-			const localRaw = localStorage.getItem('wkComprasState');
 			const hasRemoteData = remoteEntries.length > 0 || remoteBoletos.length > 0 || remoteCreditos.length > 0 || remoteResumoRows.length > 0;
 			if (!hasRemoteData && localRaw) {
 				await this.migrateLocalStorageToSupabase(localRaw);
@@ -1045,9 +1099,22 @@ function updateAuthUi(connected) {
 		body.classList.toggle('authenticated', Boolean(connected));
 	}
 	if (authGate) authGate.style.display = connected ? 'none' : 'flex';
-	if (sessionBar) sessionBar.style.display = connected ? 'flex' : 'none';
+	if (!connected && sessionBar) {
+		sessionBar.style.display = 'none';
+		const userMenuButton = document.querySelector('.user-menu-button');
+		if (userMenuButton) userMenuButton.setAttribute('aria-expanded', 'false');
+	}
 	if (sessionUserName) sessionUserName.innerText = currentSupabaseProfile?.full_name || currentSupabaseUser?.email || 'Usuário';
 	if (sessionUserRole) sessionUserRole.innerText = currentSupabaseProfile?.role || 'USUARIO';
+}
+
+function toggleUserMenu() {
+	const panel = document.getElementById('sessionBar');
+	const button = document.querySelector('.user-menu-button');
+	if (!panel || !button) return;
+	const isOpen = panel.style.display === 'flex';
+	panel.style.display = isOpen ? 'none' : 'flex';
+	button.setAttribute('aria-expanded', String(!isOpen));
 }
 
 function setAuthMessage(message, isError = true) {
@@ -1588,7 +1655,7 @@ function inserirLinhaNaTabela(id, unidade, distribuidora, produto, volumeNorm, l
 	`;
 }
 
-function adicionarCargaComDados(unidade, data, etiqueta, distribuidora, motorista, produto, volumeStrRaw, valorStrRaw) {
+function adicionarCargaComDados(unidade, data, etiqueta, distribuidora, motorista, produto, volumeStrRaw, valorStrRaw, persist = true) {
 	const volumeNorm = _normalizeDecimalString(String(volumeStrRaw));
 	const valorNorm = _normalizeDecimalString(String(valorStrRaw));
 
@@ -1614,7 +1681,7 @@ function adicionarCargaComDados(unidade, data, etiqueta, distribuidora, motorist
 
 	entries.push(entry);
 	renderTable();
-	saveState();
+	if (persist) saveState();
 }
 
 function adicionarCargaBoleto() {
@@ -1744,7 +1811,7 @@ function importarPlanilha() {
 					return;
 				}
 
-				adicionarCargaComDados(String(unidade), dataImport, '', String(distribuidora), extractFirstTwoNames(motoristaRaw), String(produto), String(volume), String(valor));
+				adicionarCargaComDados(String(unidade), dataImport, '', String(distribuidora), extractFirstTwoNames(motoristaRaw), String(produto), String(volume), String(valor), false);
 				added++;
 			});
 
@@ -1752,7 +1819,7 @@ function importarPlanilha() {
 			console.log('entries length after import (preview 5):', entries.length, entries.slice(0,5));
 			// force a full render and save in case previous renders were skipped
 			renderTable();
-			saveLocalStateOnly();
+			saveState();
 			if (wkSupabaseSyncController) {
 				await wkSupabaseSyncController.syncNow();
 			}
@@ -1825,6 +1892,190 @@ function importarResumoVolume() {
 		}
 	};
 	reader.readAsArrayBuffer(file);
+}
+
+function normalizePreenchimentoHeader(value) {
+	return normalizeLookupText(value).toLowerCase();
+}
+
+function findPreenchimentoHeader(headers, names) {
+	const wanted = names.map(normalizePreenchimentoHeader);
+	return headers.find(header => wanted.includes(normalizePreenchimentoHeader(header))) || null;
+}
+
+function getPreenchimentoValue(row, header) {
+	return header ? String(row[header] ?? '').trim() : '';
+}
+
+function fleetPlateDistance(first, second) {
+	const a = normalizeLookupText(first);
+	const b = normalizeLookupText(second);
+	if (!a || !b) return Number.MAX_SAFE_INTEGER;
+	if (a === b) return 0;
+	if (Math.abs(a.length - b.length) > 1) return Number.MAX_SAFE_INTEGER;
+	let edits = 0;
+	let left = 0;
+	let right = 0;
+	while (left < a.length && right < b.length) {
+		if (a[left] === b[right]) {
+			left++;
+			right++;
+			continue;
+		}
+		edits++;
+		if (edits > 1) return edits;
+		if (a.length > b.length) left++;
+		else if (b.length > a.length) right++;
+		else {
+			left++;
+			right++;
+		}
+	}
+	return edits + (a.length - left) + (b.length - right);
+}
+
+function findFrotaForPreenchimento(motorista, placa) {
+	const nameNorm = normalizeLookupText(motorista);
+	const plateNorm = normalizeLookupText(placa);
+	const activeFleet = frota.filter(item => item.ativo !== false);
+	const byName = nameNorm ? activeFleet.filter(item => normalizeLookupText(item.motoristaNome) === nameNorm) : [];
+	const exactPlate = plateNorm ? activeFleet.filter(item => normalizeLookupText(item.veiculo) === plateNorm) : [];
+	const byNameAndPlate = byName.filter(item => normalizeLookupText(item.veiculo) === plateNorm);
+	if (byNameAndPlate.length === 1) return byNameAndPlate[0];
+	if (exactPlate.length === 1) return exactPlate[0];
+
+	const closePlateMatches = plateNorm
+		? activeFleet.filter(item => fleetPlateDistance(item.veiculo, placa) <= 1)
+		: [];
+	if (closePlateMatches.length === 1) return closePlateMatches[0];
+	if (byName.length === 1) return byName[0];
+
+	const closeMatches = closePlateMatches.filter(item => !nameNorm || normalizeLookupText(item.motoristaNome) === nameNorm);
+	return closeMatches.length === 1 ? closeMatches[0] : null;
+}
+
+function renderPreenchimentoTable() {
+	const table = document.getElementById('tabelaPreenchimento');
+	if (!table) return;
+	const thead = table.querySelector('thead');
+	const tbody = table.querySelector('tbody');
+	thead.innerHTML = '';
+	tbody.innerHTML = '';
+	if (!preenchimentoHeaders.length) return;
+	const headerRow = thead.insertRow();
+	preenchimentoHeaders.forEach(header => {
+		const cell = document.createElement('th');
+		cell.textContent = header;
+		headerRow.appendChild(cell);
+	});
+	preenchimentoRows.slice(0, 100).forEach(row => {
+		const tableRow = tbody.insertRow();
+		preenchimentoHeaders.forEach(header => {
+			const cell = tableRow.insertCell();
+			cell.textContent = String(row[header] ?? '');
+		});
+	});
+}
+
+function importarPreenchimentoAutomatico() {
+	const input = document.getElementById('fileInputPreenchimento');
+	if (!input || !input.files || input.files.length === 0) {
+		alert('Escolha a planilha que será preenchida.');
+		return;
+	}
+	const reader = new FileReader();
+	reader.onload = function(event) {
+		try {
+			const workbook = XLSX.read(new Uint8Array(event.target.result), { type: 'array' });
+			const sheet = workbook.Sheets[workbook.SheetNames[0]];
+			const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+			let sourceHeaders = rows.length ? Object.keys(rows[0]) : [];
+			if (!sourceHeaders.length) throw new Error('A planilha não possui uma linha de cabeçalho.');
+			const dataHeaderIndex = sourceHeaders.findIndex(header => ['data', 'date', 'dt'].includes(normalizePreenchimentoHeader(header)));
+			if (dataHeaderIndex >= 0) {
+				sourceHeaders = sourceHeaders.slice(0, dataHeaderIndex + 1);
+			} else {
+				while (sourceHeaders.length && /^__empty(?:_\d+)?$/i.test(sourceHeaders[sourceHeaders.length - 1])) {
+					sourceHeaders.pop();
+				}
+			}
+
+			const unidadeHeader = findPreenchimentoHeader(sourceHeaders, ['unidade', 'unit', 'posto', 'estabelecimento']);
+			const motoristaHeader = findPreenchimentoHeader(sourceHeaders, ['motorista', 'nome motorista', 'condutor', 'driver']);
+			const placaHeader = findPreenchimentoHeader(sourceHeaders, ['placa', 'veiculo', 'caminhao', 'caminhão']);
+			const skipHeader = header => {
+				const normalized = normalizePreenchimentoHeader(header);
+				return normalized === 'cnpj' || normalized === 'cpf' || normalized.startsWith('carreta');
+			};
+
+			preenchimentoHeaders = [];
+			sourceHeaders.forEach(header => {
+				if (skipHeader(header)) return;
+				preenchimentoHeaders.push(header);
+				if (header === unidadeHeader) preenchimentoHeaders.push('CNPJ');
+				if (header === motoristaHeader) preenchimentoHeaders.push('CPF');
+				if (header === placaHeader) preenchimentoHeaders.push('CARRETA 1', 'CARRETA 2');
+			});
+
+			let unmatched = 0;
+			preenchimentoRows = rows.map(row => {
+				const unidade = getPreenchimentoValue(row, unidadeHeader);
+				const motorista = getPreenchimentoValue(row, motoristaHeader);
+				const placa = getPreenchimentoValue(row, placaHeader);
+				const fleetItem = findFrotaForPreenchimento(motorista, placa);
+				if (!fleetItem && (motorista || placa)) unmatched++;
+				const output = {};
+				sourceHeaders.forEach(header => {
+					if (skipHeader(header)) return;
+					output[header] = row[header] ?? '';
+					if (header === unidadeHeader) output.CNPJ = getCnpjForUnidade(unidade);
+					if (header === motoristaHeader) {
+						output[header] = fleetItem?.motoristaNome || motorista;
+						output.CPF = fleetItem?.motoristaCpf || '';
+					}
+					if (header === placaHeader) {
+						output['CARRETA 1'] = fleetItem?.carreta1 || '';
+						output['CARRETA 2'] = fleetItem?.carreta2 || '';
+					}
+				});
+				return output;
+			});
+			renderPreenchimentoTable();
+			saveLocalStateOnly();
+			const status = document.getElementById('preenchimentoStatus');
+			if (status) {
+				status.textContent = !frota.length
+					? `${preenchimentoRows.length} linhas processadas, mas a tabela de frota não está carregada no Supabase.`
+					: `${preenchimentoRows.length} linhas processadas.${unmatched ? ` ${unmatched} sem vínculo encontrado na frota.` : ' Todos os vínculos foram encontrados.'}`;
+			}
+		} catch (error) {
+			console.error(error);
+			alert(`Erro ao processar a planilha: ${error.message}`);
+		}
+	};
+	reader.readAsArrayBuffer(input.files[0]);
+}
+
+function exportarPreenchimentoAutomatico() {
+	if (!preenchimentoRows.length || !preenchimentoHeaders.length) {
+		alert('Importe uma planilha antes de exportar.');
+		return;
+	}
+	const worksheet = XLSX.utils.json_to_sheet(preenchimentoRows, { header: preenchimentoHeaders });
+	const workbook = XLSX.utils.book_new();
+	XLSX.utils.book_append_sheet(workbook, worksheet, 'Preenchido');
+	XLSX.writeFile(workbook, 'wk_compras_preenchimento_automatico.xlsx');
+}
+
+function limparPreenchimentoAutomatico() {
+	preenchimentoHeaders = [];
+	preenchimentoRows = [];
+	const input = document.getElementById('fileInputPreenchimento');
+	if (input) input.value = '';
+	renderPreenchimentoTable();
+	const status = document.getElementById('preenchimentoStatus');
+	if (status) status.textContent = 'Nenhuma planilha processada.';
+	saveLocalStateOnly();
 }
 
 function renderResumoVolumeTable() {
@@ -2794,6 +3045,7 @@ window.addEventListener('beforeunload', function (event) {
 
 window.addEventListener('load', function () {
 	setupPasswordRecoveryUi();
+	loadState();
 	initializeSupabaseApp().catch(error => {
 		console.error(error);
 		setAuthMessage('Erro ao inicializar o login.');

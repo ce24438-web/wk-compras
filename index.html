@@ -29,14 +29,6 @@
   </div>
 </div>
 
-<div id="sessionBar" class="session-bar" style="display:none;">
-  <div class="session-bar-info">
-    <strong id="sessionUserName">Usuário</strong>
-    <span id="sessionUserRole">USUARIO</span>
-  </div>
-  <button type="button" onclick="logout()">Sair</button>
-</div>
-
 <div class="logo-container">
   <img src="cropped-WK.png" alt="WK Logo" class="logo">
 </div>
@@ -72,11 +64,27 @@
         <span class="tab-icon">📊</span>
         <span class="tab-label">Resumo importado</span>
       </button>
+      <button class="tab-button" onclick="switchTab('tab-preenchimento')">
+        <span class="tab-icon">🧩</span>
+        <span class="tab-label">Preenchimento automático</span>
+      </button>
       <button class="tab-button" onclick="switchTab('tab-backup')">
         <span class="tab-icon">💾</span>
         <span class="tab-label">Backup</span>
       </button>
+      <button class="tab-button user-menu-button" onclick="toggleUserMenu()" aria-expanded="false">
+        <span class="tab-icon">👤</span>
+        <span class="tab-label">Usuário</span>
+      </button>
     </nav>
+
+    <div id="sessionBar" class="session-bar user-menu-panel" style="display:none;">
+      <div class="session-bar-info">
+        <strong id="sessionUserName">Usuário</strong>
+        <span id="sessionUserRole">USUARIO</span>
+      </div>
+      <button type="button" onclick="logout()">Sair</button>
+    </div>
 
   </aside>
 
@@ -442,6 +450,27 @@
         </div>
       </div>
     </div> <!-- Fim tab-resumo -->
+
+    <!-- TAB PREENCHIMENTO: PREENCHIMENTO AUTOMATICO -->
+    <div id="tab-preenchimento" class="tab-content">
+      <div class="card">
+        <h2 style="margin-top:0; color: var(--brand-blue-800);">Preenchimento automático</h2>
+        <div class="muted">Importe uma planilha de cargas. O sistema preencherá CNPJ, CPF e as duas carretas vinculadas à placa.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px;">
+          <input type="file" id="fileInputPreenchimento" accept=".xlsx,.xls,.csv" />
+          <button onclick="importarPreenchimentoAutomatico()">Importar Planilha</button>
+          <button onclick="exportarPreenchimentoAutomatico()" style="background:#2563eb;">Exportar Excel preenchido</button>
+          <button onclick="limparPreenchimentoAutomatico()" style="background:#ef4444;">Limpar</button>
+        </div>
+        <div id="preenchimentoStatus" class="muted" style="margin-top:12px;">Nenhuma planilha processada.</div>
+        <div class="table-scroll" style="margin-top:16px;">
+          <table id="tabelaPreenchimento">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div> <!-- Fim tab-preenchimento -->
 
     <!-- TAB BACKUP: BACKUP DO SISTEMA -->
     <div id="tab-backup" class="tab-content">

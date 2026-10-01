@@ -83,6 +83,21 @@ create table if not exists public.unidades (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.frota (
+  id uuid primary key default gen_random_uuid(),
+  categoria text not null default 'FROTA',
+  veiculo text,
+  carreta_1 text,
+  carreta_2 text,
+  motorista_nome text,
+  motorista_cpf text,
+  ativo boolean not null default true,
+  created_by uuid references public.profiles (id) on delete set null,
+  updated_by uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.cargas_principais (
   id uuid primary key default gen_random_uuid(),
   legacy_local_id text unique,
@@ -216,6 +231,10 @@ create trigger trg_unidades_audit
 before insert or update on public.unidades
 for each row execute function public.set_audit_columns();
 
+create trigger trg_frota_audit
+before insert or update on public.frota
+for each row execute function public.set_audit_columns();
+
 create trigger trg_cargas_principais_audit
 before insert or update on public.cargas_principais
 for each row execute function public.set_audit_columns();
@@ -245,6 +264,8 @@ after insert on auth.users
 for each row execute function public.handle_new_auth_user();
 
 create index if not exists idx_cargas_principais_unidade_id on public.cargas_principais (unidade_id);
+create index if not exists idx_frota_veiculo on public.frota (veiculo);
+create index if not exists idx_frota_motorista_cpf on public.frota (motorista_cpf);
 create index if not exists idx_cargas_principais_created_by on public.cargas_principais (created_by);
 create index if not exists idx_cargas_principais_data on public.cargas_principais (data);
 create index if not exists idx_cargas_boleto_source_carga_id on public.cargas_boleto (source_carga_id);

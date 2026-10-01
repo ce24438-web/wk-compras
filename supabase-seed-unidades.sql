@@ -10,14 +10,17 @@ values
   ('BM NIQUELÂNDIA - GO', '37.489.383/0007-09', array['BM NIQUELÂNDIA - GO', 'BM NIQUELANDIA - GO', 'BM NIQUELANDIA', 'NIQUELÂNDIA', 'NIQUELANDIA']),
   ('REGIONAL DERIVADOS', '05.405.388/0001-24', array['REGIONAL DERIVADOS']),
   ('JARAGUÁ - GO', '27.370.739/0001-41', array['JARAGUÁ - GO', 'JARAGUA - GO', 'JARAGUÁ', 'JARAGUA']),
+	('BM JATAÍ', '37.489.383/0008-90', array['BM JATAÍ', 'BM JATAI', 'JATAÍ', 'JATAI']),
   ('BM CATALÃO - GO', '37.489.383/0002-02', array['BM CATALÃO - GO', 'BM CATALAO - GO', 'BM CATALAO', 'CATALÃO', 'CATALAO']),
   ('BM GOIANÉSIA - GO', '37.489.383/0009-70', array['BM GOIANÉSIA - GO', 'BM GOIANESIA - GO', 'BM GOIANESIA', 'GOIANÉSIA', 'GOIANESIA']),
   ('KBW', '07.557.958/0001-27', array['KBW']),
-  ('WK 14', '58.889.718/0002-02', array['WK 14']),
-  ('REDE DE POSTOS QUERÊNCIA MT', '58.889.718/0003-85', array['REDE DE POSTOS QUERÊNCIA MT', 'REDE DE POSTOS QUERENCIA MT', 'QUERÊNCIA MT', 'QUERENCIA MT'])
-on conflict (cnpj) do update
+  ('WK 14', '58.889.918/0002-02', array['WK 14', 'REDE DE POSTOS WK XIV', 'REDE DE POSTOS WK 14']),
+  ('REDE DE POSTOS QUERÊNCIA MT', '58.889.918/0003-85', array['REDE DE POSTOS QUERÊNCIA MT', 'REDE DE POSTOS QUERENCIA MT', 'REDE DE POSTOS WK QUERÊNCIA', 'REDE DE POSTOS WK QUERENCIA', 'QUERÊNCIA MT', 'QUERENCIA MT']),
+  ('BM CENTRO', '37.489.383/0011-95', array['BM CENTRO']),
+  ('BM QUERÊNCIA', '37.489.383/0012-76', array['BM QUERÊNCIA', 'BM QUERENCIA'])
+on conflict (nome_padrao) do update
 set
-  nome_padrao = excluded.nome_padrao,
+  cnpj = excluded.cnpj,
   aliases = excluded.aliases,
   ativo = true,
   updated_at = now();

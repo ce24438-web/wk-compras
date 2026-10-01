@@ -44,6 +44,7 @@ $$;
 
 alter table public.profiles enable row level security;
 alter table public.unidades enable row level security;
+alter table public.frota enable row level security;
 alter table public.cargas_principais enable row level security;
 alter table public.cargas_boleto enable row level security;
 alter table public.creditos_fornecedor enable row level security;
@@ -88,6 +89,34 @@ with check (public.is_admin_user());
  drop policy if exists unidades_delete_admin_only on public.unidades;
 create policy unidades_delete_admin_only
 on public.unidades
+for delete
+using (public.is_admin_user());
+
+-- CARGAS PRINCIPAIS
+
+-- FROTA
+drop policy if exists frota_select_members on public.frota;
+create policy frota_select_members
+on public.frota
+for select
+using (public.is_active_member());
+
+drop policy if exists frota_insert_admin_only on public.frota;
+create policy frota_insert_admin_only
+on public.frota
+for insert
+with check (public.is_admin_user());
+
+drop policy if exists frota_update_admin_only on public.frota;
+create policy frota_update_admin_only
+on public.frota
+for update
+using (public.is_admin_user())
+with check (public.is_admin_user());
+
+drop policy if exists frota_delete_admin_only on public.frota;
+create policy frota_delete_admin_only
+on public.frota
 for delete
 using (public.is_admin_user());
 
