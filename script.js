@@ -39,7 +39,7 @@ const UNIDADE_CNPJ_MAP = [
 	{ cnpj: '58.889.918/0002-02', aliases: ['WK 14', 'REDE DE POSTOS WK XIV', 'REDE DE POSTOS WK 14'] },
 	{ cnpj: '58.889.918/0003-85', aliases: ['REDE DE POSTOS QUERÊNCIA MT', 'REDE DE POSTOS QUERENCIA MT', 'REDE DE POSTOS WK QUERÊNCIA', 'REDE DE POSTOS WK QUERENCIA', 'QUERÊNCIA MT', 'QUERENCIA MT'] },
 	{ cnpj: '37.489.383/0011-95', aliases: ['BM CENTRO'] },
-	{ cnpj: '37.489.383/0012-76', aliases: ['BM QUERÊNCIA', 'BM QUERENCIA'] }
+	{ cnpj: '37.489.383/0012-76', aliases: ['BM QUERÊNCIA', 'BM QUERENCIA', 'QUERÊNCIA', 'QUERENCIA'] }
 ];
 
 function normalizeLookupText(value) {
