@@ -439,6 +439,13 @@ h1 {
 	margin-right: auto;
 }
 
+.preenchimento-spacer-row td {
+	height: 18px;
+	padding: 0;
+	background: transparent;
+	border: 0;
+}
+
 @keyframes slideInDown {
 	from {
 		opacity: 0;

@@ -1969,6 +1969,14 @@ function renderPreenchimentoTable() {
 		headerRow.appendChild(cell);
 	});
 	preenchimentoRows.slice(0, 100).forEach(row => {
+		if (row.__spacer) {
+			const spacerRow = tbody.insertRow();
+			spacerRow.className = 'preenchimento-spacer-row';
+			const spacerCell = spacerRow.insertCell();
+			spacerCell.colSpan = preenchimentoHeaders.length;
+			spacerCell.textContent = '';
+			return;
+		}
 		const tableRow = tbody.insertRow();
 		preenchimentoHeaders.forEach(header => {
 			const cell = tableRow.insertCell();
@@ -2045,7 +2053,7 @@ function importarPreenchimentoAutomatico() {
 			filledRows.forEach(row => {
 				const currentDriver = normalizeLookupText(row[motoristaHeader] || '');
 				if (preenchimentoRows.length && currentDriver && previousDriver && currentDriver !== previousDriver) {
-					preenchimentoRows.push({});
+					preenchimentoRows.push({ __spacer: true });
 				}
 				preenchimentoRows.push(row);
 				if (currentDriver) previousDriver = currentDriver;
@@ -2071,7 +2079,8 @@ function exportarPreenchimentoAutomatico() {
 		alert('Importe uma planilha antes de exportar.');
 		return;
 	}
-	const worksheet = XLSX.utils.json_to_sheet(preenchimentoRows, { header: preenchimentoHeaders });
+	const exportRows = preenchimentoRows.map(row => row.__spacer ? {} : row);
+	const worksheet = XLSX.utils.json_to_sheet(exportRows, { header: preenchimentoHeaders });
 	const workbook = XLSX.utils.book_new();
 	XLSX.utils.book_append_sheet(workbook, worksheet, 'Preenchido');
 	XLSX.writeFile(workbook, 'wk_compras_preenchimento_automatico.xlsx');
