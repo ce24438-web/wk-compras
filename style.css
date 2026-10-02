@@ -258,7 +258,9 @@ body > * {
 	display: flex;
 	flex-direction: column;
 	width: 280px;
-	background: linear-gradient(180deg, rgba(7, 66, 140, 0.98) 0%, rgba(12, 96, 210, 0.96) 100%);
+	background:
+		linear-gradient(180deg, rgba(5, 48, 105, 0.98) 0%, rgba(8, 82, 170, 0.97) 55%, rgba(5, 48, 105, 0.99) 100%),
+		url('cropped-WK.png') center 92% / 220px auto no-repeat;
 	color: white;
 	padding: 20px 14px 18px;
 	overflow-y: auto;
@@ -268,6 +270,7 @@ body > * {
 	z-index: 998;
 	flex-shrink: 0;
 	border-right: 1px solid rgba(255, 255, 255, 0.12);
+	overflow-x: hidden;
 }
 
 .sidebar.closed {
@@ -347,17 +350,73 @@ body > * {
 }
 
 .sidebar-header {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 12px;
 	margin-bottom: 18px;
-	padding: 8px 10px 14px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+	padding: 0 2px 18px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.sidebar-header::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	bottom: -2px;
+	width: 52px;
+	height: 3px;
+	border-radius: 3px;
+	background: #ff304f;
+}
+
+.sidebar-brand-mark {
+	display: grid;
+	place-items: center;
+	width: 72px;
+	height: 72px;
+	flex: 0 0 72px;
+	border: 1px solid rgba(255, 255, 255, 0.6);
+	border-radius: 18px;
+	background: rgba(255, 255, 255, 0.96);
+	box-shadow: 0 12px 24px rgba(1, 19, 50, 0.24), 0 0 0 5px rgba(255, 255, 255, 0.07);
+	transform: rotate(-2deg);
+}
+
+.sidebar-logo {
+	width: 62px;
+	height: auto;
+	display: block;
+	transform: rotate(2deg);
+}
+
+.sidebar-brand-copy {
+	min-width: 0;
+}
+
+.sidebar-kicker {
+	display: block;
+	margin-bottom: 3px;
+	color: rgba(255, 255, 255, 0.68);
+	font-size: 10px;
+	font-weight: 800;
+	letter-spacing: 1.5px;
+	text-transform: uppercase;
 }
 
 .sidebar-header h2 {
 	margin: 0;
-	font-size: 1.25rem;
+	font-size: 1.15rem;
 	text-align: left;
-	padding-left: 4px;
-	letter-spacing: 0.4px;
+	letter-spacing: 0.2px;
+}
+
+.sidebar-caption {
+	display: block;
+	margin-top: 5px;
+	color: rgba(255, 255, 255, 0.72);
+	font-size: 11px;
+	white-space: nowrap;
 }
 
 .tabs-nav {
@@ -373,7 +432,7 @@ body > * {
 	gap: 10px;
 	width: 100%;
 	padding: 12px 14px;
-	background: rgba(255, 255, 255, 0.08);
+	background: rgba(255, 255, 255, 0.075);
 	border: 1px solid rgba(255, 255, 255, 0.14);
 	border-radius: 12px;
 	color: white;
@@ -392,10 +451,10 @@ body > * {
 }
 
 .tab-button.active {
-	background: linear-gradient(90deg, rgba(255,255,255,0.18), rgba(255,255,255,0.1));
-	border-left: 4px solid #ff3b6d;
+	background: linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,0.09));
+	border-left: 4px solid #ff304f;
 	border-color: rgba(255,255,255,0.35);
-	box-shadow: 0 8px 18px rgba(0, 0, 0, 0.15);
+	box-shadow: 0 8px 18px rgba(0, 0, 0, 0.15), inset 0 0 18px rgba(255, 48, 79, 0.08);
 }
 
 .tab-icon {
