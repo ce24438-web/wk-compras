@@ -184,6 +184,41 @@ body.authenticated .auth-gate {
 	flex-shrink: 0;
 }
 
+.system-info-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	margin: 9px 8px 0;
+	padding: 4px 6px;
+	border: 0;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.68);
+	cursor: pointer;
+	font: inherit;
+	font-size: 11px;
+	text-align: left;
+	transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+.system-info-button:hover,
+.system-info-button:focus-visible {
+	color: #fff;
+	opacity: 1;
+	outline: none;
+}
+
+.system-info-icon {
+	display: inline-grid;
+	place-items: center;
+	width: 16px;
+	height: 16px;
+	border: 1px solid currentColor;
+	border-radius: 50%;
+	font-family: Georgia, serif;
+	font-size: 12px;
+	font-weight: 700;
+}
+
 .sidebar-account {
 	margin-top: auto;
 	border-top: 1px solid rgba(255, 255, 255, 0.18);
@@ -845,6 +880,107 @@ table {
 	box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08), 0 3px 10px rgba(37, 99, 235, 0.08);
 }
 
+#resumoTabela.resumo-cotacao-table {
+	table-layout: fixed;
+	margin-top: 16px;
+	border: 1px solid rgba(11, 97, 216, 0.14);
+	box-shadow: 0 16px 34px rgba(15, 23, 42, 0.1), 0 5px 14px rgba(37, 99, 235, 0.08);
+}
+
+#resumoTabela .resumo-col-unidade {
+	width: 18%;
+	text-align: left;
+	padding-left: 18px;
+}
+
+#resumoTabela .resumo-col-gasolina {
+	width: 15%;
+}
+
+#resumoTabela .resumo-col-combustivel {
+	width: 11%;
+}
+
+#resumoTabela .resumo-col-total {
+	width: 19%;
+}
+
+#resumoTabela thead th {
+	padding: 13px 7px;
+	font-size: 12px;
+	line-height: 1.3;
+	letter-spacing: 0;
+	font-weight: 800;
+	white-space: normal;
+}
+
+#resumoTabela tbody td,
+#resumoTabela tfoot td {
+	padding: 13px 8px;
+	font-size: 14px;
+}
+
+#resumoTabela .resumo-unit-cell {
+	position: relative;
+	padding-left: 18px;
+	text-align: left;
+	font-weight: 800;
+	letter-spacing: 0.2px;
+}
+
+#resumoTabela .resumo-unit-cell::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 9px;
+	bottom: 9px;
+	width: 4px;
+	border-radius: 4px;
+	background: var(--resumo-tone);
+}
+
+#resumoTabela .resumo-number-cell {
+	color: #172238;
+	font-variant-numeric: tabular-nums;
+	font-weight: 700;
+	letter-spacing: 0.4px;
+}
+
+#resumoTabela .resumo-total-cell {
+	color: var(--brand-blue-800);
+	font-size: 15px;
+	font-weight: 900;
+}
+
+#resumoTabela .resumo-unit-row td {
+	background: color-mix(in srgb, var(--resumo-tone) 6%, #fff);
+}
+
+#resumoTabela .resumo-unit-row:hover td {
+	background: color-mix(in srgb, var(--resumo-tone) 13%, #fff);
+}
+
+#resumoTabela .resumo-tone-0 { --resumo-tone: #2563eb; }
+#resumoTabela .resumo-tone-1 { --resumo-tone: #0f766e; }
+#resumoTabela .resumo-tone-2 { --resumo-tone: #c2410c; }
+#resumoTabela .resumo-tone-3 { --resumo-tone: #7c3aed; }
+#resumoTabela .resumo-tone-4 { --resumo-tone: #be123c; }
+#resumoTabela .resumo-tone-5 { --resumo-tone: #15803d; }
+
+#resumoTabela .resumo-total-row td {
+	background: linear-gradient(180deg, #e8f1ff 0%, #dbeafe 100%);
+	border-top: 2px solid rgba(37, 99, 235, 0.2);
+	color: #102a56;
+	font-size: 15px;
+	font-variant-numeric: tabular-nums;
+	font-weight: 900;
+}
+
+#resumoTabela .resumo-total-row td:first-child {
+	text-align: left;
+	padding-left: 18px;
+}
+
 th, td {
 	border-bottom: 1px solid rgba(219, 230, 243, 0.8);
 	padding: 14px 12px;
@@ -1022,6 +1158,78 @@ tbody tr:hover {
 	background: rgba(255, 255, 255, 0.25);
 	border-color: rgba(255, 255, 255, 0.4);
 	transform: scale(1.05);
+}
+
+.system-info-panel {
+	max-width: 560px;
+	background: linear-gradient(145deg, #ffffff 0%, #eef5ff 100%);
+	color: #10213f;
+	border: 1px solid rgba(11, 97, 216, 0.16);
+}
+
+.system-info-heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 18px;
+	margin-bottom: 18px;
+}
+
+.system-info-panel h2 {
+	color: var(--brand-blue-800);
+	margin: 4px 0 0;
+}
+
+.system-info-eyebrow {
+	color: var(--brand-red);
+	font-size: 11px;
+	font-weight: 800;
+	letter-spacing: 1.4px;
+	text-transform: uppercase;
+}
+
+.system-info-content p {
+	margin: 0 0 18px;
+	line-height: 1.65;
+}
+
+.system-info-content dl {
+	display: grid;
+	gap: 10px;
+	margin: 0;
+}
+
+.system-info-content dl div {
+	display: grid;
+	grid-template-columns: 145px 1fr;
+	gap: 12px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid rgba(11, 97, 216, 0.12);
+}
+
+.system-info-content dt {
+	color: var(--brand-blue-800);
+	font-size: 12px;
+	font-weight: 800;
+}
+
+.system-info-content dd {
+	margin: 0;
+	font-size: 13px;
+}
+
+.system-signature {
+	margin-top: 22px;
+	padding-top: 12px;
+	border-top: 1px solid rgba(11, 97, 216, 0.18);
+	text-align: right;
+}
+
+.system-signature span {
+	font-family: "Segoe Script", "Brush Script MT", cursive;
+	font-size: 24px;
+	font-style: italic;
+	color: #172238;
 }
 
 /* Botão flutuante para abrir o painel secundário */

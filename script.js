@@ -1117,6 +1117,18 @@ function toggleUserMenu() {
 	button.setAttribute('aria-expanded', String(!isOpen));
 }
 
+function openSystemInfo() {
+	const panel = document.getElementById('systemInfoPanel');
+	if (!panel) return;
+	panel.style.display = 'flex';
+}
+
+function closeSystemInfo(event) {
+	if (event && event.target !== event.currentTarget) return;
+	const panel = document.getElementById('systemInfoPanel');
+	if (panel) panel.style.display = 'none';
+}
+
 function setAuthMessage(message, isError = true) {
 	const authMessage = document.getElementById('authMessage');
 	if (!authMessage) return;
@@ -2987,16 +2999,17 @@ function renderVolumeSummary() {
 		const row = tbody.insertRow();
 		row.innerHTML = '<td colspan="7" style="text-align:center; color: var(--muted);">Nenhuma carga disponível para gerar o resumo.</td>';
 	} else {
-		rows.forEach(item => {
+		rows.forEach((item, rowIndex) => {
 			const row = tbody.insertRow();
+			row.className = `resumo-unit-row resumo-tone-${rowIndex % 6}`;
 			row.innerHTML = `
-				<td>${item.Unidade}</td>
-				<td>${formatNumberFromDecimalString(item.GC)}</td>
-				<td>${formatNumberFromDecimalString(item.GAD)}</td>
-				<td>${formatNumberFromDecimalString(item.ETANOL)}</td>
-				<td>${formatNumberFromDecimalString(item['S-500'])}</td>
-				<td>${formatNumberFromDecimalString(item['S-10'])}</td>
-				<td>${formatNumberFromDecimalString(item.Total)}</td>
+				<td class="resumo-unit-cell">${item.Unidade}</td>
+				<td class="resumo-number-cell">${formatNumberFromDecimalString(item.GC)}</td>
+				<td class="resumo-number-cell">${formatNumberFromDecimalString(item.GAD)}</td>
+				<td class="resumo-number-cell">${formatNumberFromDecimalString(item.ETANOL)}</td>
+				<td class="resumo-number-cell">${formatNumberFromDecimalString(item['S-500'])}</td>
+				<td class="resumo-number-cell">${formatNumberFromDecimalString(item['S-10'])}</td>
+				<td class="resumo-number-cell resumo-total-cell">${formatNumberFromDecimalString(item.Total)}</td>
 			`;
 
 			totalGC = addDecimalStrings(totalGC, item.GC);
