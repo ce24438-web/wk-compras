@@ -1051,6 +1051,7 @@ function toggleSidebar() {
 // Restaurar estado do sidebar ao carregar a página
 window.addEventListener('DOMContentLoaded', function() {
 	wkComprasLayoutController.restoreSidebarState();
+	initializeTheme();
 });
 
 function openDistribuidorPanel() {
@@ -1127,6 +1128,33 @@ function closeSystemInfo(event) {
 	if (event && event.target !== event.currentTarget) return;
 	const panel = document.getElementById('systemInfoPanel');
 	if (panel) panel.style.display = 'none';
+}
+
+function applyDarkMode(enabled) {
+	document.body.classList.toggle('dark-mode', enabled);
+	const button = document.querySelector('.theme-toggle-button');
+	const icon = button ? button.querySelector('.theme-toggle-icon') : null;
+	const label = button ? button.querySelector('.theme-toggle-label') : null;
+	if (button) {
+		button.setAttribute('aria-pressed', String(enabled));
+		button.setAttribute('title', enabled ? 'Desativar modo escuro' : 'Ativar modo escuro');
+	}
+	if (icon) icon.textContent = enabled ? '☀' : '☾';
+	if (label) label.textContent = enabled ? 'Modo claro' : 'Modo escuro';
+}
+
+function toggleDarkMode() {
+	const enabled = !document.body.classList.contains('dark-mode');
+	localStorage.setItem('wkComprasDarkMode', String(enabled));
+	applyDarkMode(enabled);
+}
+
+function initializeTheme() {
+	const savedTheme = localStorage.getItem('wkComprasDarkMode');
+	const enabled = savedTheme === null
+		? window.matchMedia('(prefers-color-scheme: dark)').matches
+		: savedTheme === 'true';
+	applyDarkMode(enabled);
 }
 
 function setAuthMessage(message, isError = true) {

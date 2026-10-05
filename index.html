@@ -87,6 +87,10 @@
         <span class="system-info-icon">i</span>
         <span>Informações do sistema</span>
       </button>
+      <button type="button" class="theme-toggle-button" onclick="toggleDarkMode()" aria-pressed="false" title="Ativar modo escuro">
+        <span class="theme-toggle-icon">☾</span>
+        <span class="theme-toggle-label">Modo escuro</span>
+      </button>
     </nav>
 
     <div id="sessionBar" class="session-bar user-menu-panel" style="display:none;">
@@ -241,39 +245,9 @@
       <div class="card">
         <h2 style="margin-top: 0; color: var(--brand-blue-800);">Cargas no Boleto</h2>
 
-        <div class="filters" style="margin-bottom:16px;">
-          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
-            <div style="flex:1;min-width:180px;">
-              <label>Filtrar Unidade</label>
-              <input type="text" id="filterBoletoUnidade" placeholder="busca por unidade">
-            </div>
-            <div style="flex:1;min-width:180px;">
-              <label>Filtrar Distribuidora</label>
-              <input type="text" id="filterBoletoDistribuidora" placeholder="busca por distribuidora">
-            </div>
-            <div style="flex:1;min-width:180px;">
-              <label>Filtrar Motorista</label>
-              <input type="text" id="filterBoletoMotorista" placeholder="busca por motorista">
-            </div>
-            <div style="width:220px;">
-              <label>Filtrar Produto</label>
-              <select id="filterBoletoProduto">
-                <option value="">Todos</option>
-                <option value="GC">GC - Gasolina Comum</option>
-                <option value="GAD">GAD - Gasolina Aditivada</option>
-                <option value="S-500">S-500</option>
-                <option value="S-10">S-10</option>
-                <option value="ETANOL">Etanol</option>
-              </select>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <button onclick="applyBoletoFilters()">Aplicar</button>
-              <button onclick="clearBoletoFilters()" style="background:#94a3b8;">Limpar</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="grid" style="margin-bottom:16px;">
+        <div class="boleto-entry-section">
+          <div class="boleto-section-heading">Adicionar carga ao boleto</div>
+          <div class="grid" style="margin-bottom:16px;">
           <div>
             <label>Unidade</label>
             <input type="text" id="boletoUnidade" placeholder="BM Jaraguá">
@@ -318,9 +292,43 @@
             <label>Valor por litro (R$)</label>
             <input type="number" id="boletoValor" step="0.0001" placeholder="5.35">
           </div>
+          </div>
+
+          <button onclick="adicionarCargaBoleto()" style="margin-bottom:16px;">Adicionar ao Boleto</button>
         </div>
 
-        <button onclick="adicionarCargaBoleto()" style="margin-bottom:16px;">Adicionar ao Boleto</button>
+        <div class="boleto-filter-section filters" style="margin-bottom:16px;">
+          <div class="boleto-section-heading">Filtrar cargas do boleto</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+            <div style="flex:1;min-width:180px;">
+              <label>Filtrar Unidade</label>
+              <input type="text" id="filterBoletoUnidade" placeholder="busca por unidade">
+            </div>
+            <div style="flex:1;min-width:180px;">
+              <label>Filtrar Distribuidora</label>
+              <input type="text" id="filterBoletoDistribuidora" placeholder="busca por distribuidora">
+            </div>
+            <div style="flex:1;min-width:180px;">
+              <label>Filtrar Motorista</label>
+              <input type="text" id="filterBoletoMotorista" placeholder="busca por motorista">
+            </div>
+            <div style="width:220px;">
+              <label>Filtrar Produto</label>
+              <select id="filterBoletoProduto">
+                <option value="">Todos</option>
+                <option value="GC">GC - Gasolina Comum</option>
+                <option value="GAD">GAD - Gasolina Aditivada</option>
+                <option value="S-500">S-500</option>
+                <option value="S-10">S-10</option>
+                <option value="ETANOL">Etanol</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button onclick="applyBoletoFilters()">Aplicar</button>
+              <button onclick="clearBoletoFilters()" style="background:#94a3b8;">Limpar</button>
+            </div>
+          </div>
+        </div>
 
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
           <button onclick="exportBoletoToCsv()" style="background:#10b981;">Exportar CSV</button>
