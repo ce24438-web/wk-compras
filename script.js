@@ -214,7 +214,7 @@ class WKComprasUtils {
 	static excelSerialToDate(serial) {
 		const n = Number(serial);
 		if (!Number.isFinite(n)) return '';
-		const utc = Date.UTC(1899, 11, 30) + (n - 1) * 86400000;
+		const utc = Date.UTC(1899, 11, 30) + n * 86400000;
 		const date = new Date(utc);
 		const y = date.getUTCFullYear();
 		const m = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -1112,10 +1112,13 @@ function updateAuthUi(connected) {
 function toggleUserMenu() {
 	const panel = document.getElementById('sessionBar');
 	const button = document.querySelector('.user-menu-button');
-	if (!panel || !button) return;
-	const isOpen = panel.style.display === 'flex';
-	panel.style.display = isOpen ? 'none' : 'flex';
-	button.setAttribute('aria-expanded', String(!isOpen));
+	if (button) button.setAttribute('aria-expanded', 'true');
+	switchTab('tab-usuario');
+	const emailInput = document.getElementById('userLoginEmail');
+	if (emailInput && currentSupabaseUser?.email && !emailInput.value) {
+		emailInput.value = currentSupabaseUser.email;
+	}
+	if (panel) panel.style.display = 'none';
 }
 
 function openSystemInfo() {
@@ -1132,15 +1135,16 @@ function closeSystemInfo(event) {
 
 function applyDarkMode(enabled) {
 	document.body.classList.toggle('dark-mode', enabled);
-	const button = document.querySelector('.theme-toggle-button');
-	const icon = button ? button.querySelector('.theme-toggle-icon') : null;
-	const label = button ? button.querySelector('.theme-toggle-label') : null;
-	if (button) {
+	document.querySelectorAll('.theme-toggle-button, .theme-toggle-card').forEach(button => {
 		button.setAttribute('aria-pressed', String(enabled));
 		button.setAttribute('title', enabled ? 'Desativar modo escuro' : 'Ativar modo escuro');
-	}
-	if (icon) icon.textContent = enabled ? '☀' : '☾';
-	if (label) label.textContent = enabled ? 'Modo claro' : 'Modo escuro';
+	});
+	document.querySelectorAll('.theme-toggle-icon').forEach(icon => {
+		icon.textContent = enabled ? '☀' : '☾';
+	});
+	document.querySelectorAll('.theme-toggle-label').forEach(label => {
+		label.textContent = enabled ? 'Modo claro' : 'Modo escuro';
+	});
 }
 
 function toggleDarkMode() {
@@ -1164,59 +1168,68 @@ function setAuthMessage(message, isError = true) {
 	authMessage.style.color = isError ? 'var(--brand-red)' : 'var(--brand-blue-800)';
 }
 
-async function handleLoginSubmit(event) {
+async function handleLoginSubmit(event, formType = 'gate') {
 	if (event) event.preventDefault();
 	if (!wkSupabaseClient) {
 		setAuthMessage('Supabase não está configurado neste ambiente.');
 		return;
 	}
-	const emailInput = document.getElementById('loginEmail');
-	const passwordInput = document.getElementById('loginPassword');
-	const button = document.getElementById('loginButton');
+	const prefix = formType === 'user' ? 'userLogin' : 'login';
+	const messageId = formType === 'user' ? 'userAuthMessage' : 'authMessage';
+	const emailInput = document.getElementById(`${prefix}Email`);
+	const passwordInput = document.getElementById(`${prefix}Password`);
+	const button = document.getElementById(`${prefix}Button`);
 	const email = emailInput ? String(emailInput.value || '').trim() : '';
 	const password = passwordInput ? String(passwordInput.value || '') : '';
 	if (!email || !password) {
-		setAuthMessage('Informe e-mail e senha.');
+		setAuthMessageFor(messageId, 'Informe e-mail e senha.');
 		return;
 	}
 	if (button) button.disabled = true;
-	setAuthMessage('Entrando...', false);
+	setAuthMessageFor(messageId, 'Entrando...', false);
 	const { data, error } = await wkSupabaseClient.auth.signInWithPassword({ email, password });
 	if (button) button.disabled = false;
 	if (error) {
-		setAuthMessage(error.message || 'Falha no login.');
+		setAuthMessageFor(messageId, error.message || 'Falha no login.');
 		return;
 	}
 	currentSupabaseSession = data.session || null;
-	setAuthMessage('Login realizado.', false);
+	setAuthMessageFor(messageId, 'Login realizado.', false);
 }
 
+function setAuthMessageFor(elementId, message, isError = true) {
+	const authMessage = document.getElementById(elementId);
+	if (!authMessage) return;
+	authMessage.innerText = message || '';
+	authMessage.style.color = isError ? 'var(--brand-red)' : 'var(--brand-blue-800)';
+}
 
 function getSupabaseRecoveryRedirectUrl() {
 	return `${window.location.origin}${window.location.pathname}`;
 }
 
-async function sendPasswordRecovery() {
+async function sendPasswordRecovery(formType = 'gate') {
 	if (!wkSupabaseClient) {
 		setAuthMessage('Supabase não está configurado neste ambiente.');
 		return;
 	}
-	const emailInput = document.getElementById('loginEmail');
+	const emailInput = document.getElementById(formType === 'user' ? 'userLoginEmail' : 'loginEmail');
 	const email = emailInput ? String(emailInput.value || '').trim() : '';
 	if (!email) {
-		setAuthMessage('Digite seu e-mail para receber o link de recuperação.');
+		setAuthMessageFor(formType === 'user' ? 'userAuthMessage' : 'authMessage', 'Digite seu e-mail para receber o link de recuperação.');
 		if (emailInput) emailInput.focus();
 		return;
 	}
-	setAuthMessage('Enviando link de recuperação...', false);
+	const messageId = formType === 'user' ? 'userAuthMessage' : 'authMessage';
+	setAuthMessageFor(messageId, 'Enviando link de recuperação...', false);
 	const { error } = await wkSupabaseClient.auth.resetPasswordForEmail(email, {
 		redirectTo: getSupabaseRecoveryRedirectUrl()
 	});
 	if (error) {
-		setAuthMessage(error.message || 'Não foi possível enviar o link de recuperação.');
+		setAuthMessageFor(messageId, error.message || 'Não foi possível enviar o link de recuperação.');
 		return;
 	}
-	setAuthMessage('Link de recuperação enviado para seu e-mail. Verifique também o Spam.', false);
+	setAuthMessageFor(messageId, 'Link de recuperação enviado para seu e-mail. Verifique também o Spam.', false);
 }
 
 async function handlePasswordRecovery() {
@@ -1403,6 +1416,7 @@ function applyBulkValor() {
 	});
 	if (!any) { alert('Nenhuma linha selecionada.'); return; }
 	const chk = document.getElementById('selectAllCheckbox'); if (chk) chk.checked = false;
+	saveState();
 	renderTable();
 	renderTabelaCredito();
 }
@@ -1552,13 +1566,25 @@ function isValidMonthDay(value) {
 }
 
 function removerLinhaById(id) {
-	const idx = entries.findIndex(e => String(e.id) === String(id));
-	if (idx === -1) return;
-	entries[idx].removed = true;
+	const targetEntries = getEntryEditTargets(id);
+	if (!targetEntries.length) return;
+	targetEntries.forEach(entry => {
+		entry.removed = true;
+		entry.selected = false;
+	});
 	renderTable();
 	// O código anterior só escondia a carga na tela. Sem saveState(),
 	// ela não era sincronizada como removed=true no Supabase e podia voltar.
 	saveState();
+}
+
+function removerSelecionadosPrincipal() {
+	const selected = entries.find(entry => !entry.removed && entry.selected);
+	if (!selected) {
+		alert('Selecione ao menos uma carga na tabela principal.');
+		return;
+	}
+	removerLinhaById(selected.id);
 }
 
 function renderTable() {
@@ -1608,15 +1634,24 @@ function renderTable() {
 }
 
 function setEntryLabel(id, label) {
-	const entry = entries.find(e => String(e.id) === String(id));
-	if (!entry) return;
-	entry.etiqueta = String(label || '');
+	const targetEntries = getEntryEditTargets(id);
+	if (!targetEntries.length) return;
+	targetEntries.forEach(entry => {
+		entry.etiqueta = String(label || '');
+	});
+	saveState();
 	renderTable();
 }
 
+function getEntryEditTargets(id) {
+	const selectedEntries = entries.filter(entry => !entry.removed && entry.selected);
+	if (selectedEntries.length > 0) return selectedEntries;
+	const entry = entries.find(item => String(item.id) === String(id) && !item.removed);
+	return entry ? [entry] : [];
+}
+
 function editValorById(id) {
-	const selectedEntries = entries.filter(e => !e.removed && e.selected);
-	const targetEntries = selectedEntries.length > 0 ? selectedEntries : [entries.find(e => String(e.id) === String(id))].filter(Boolean);
+	const targetEntries = getEntryEditTargets(id);
 	if (!targetEntries.length) return alert('Registro não encontrado');
 	const current = targetEntries[0].valorNorm;
 	const input = prompt('Informe o novo Valor por litro para os itens selecionados (use ponto para decimais):', current);
@@ -1629,15 +1664,13 @@ function editValorById(id) {
 		entry.totalStr = multiplyDecimalStrings(entry.litrosStr, entry.valorNorm);
 		syncCreditoWithEntry(entry);
 	});
+	saveState();
 	renderTable();
 	renderTabelaCredito();
 }
 
 function updateEntryValorById(id, valorRaw) {
-	const selectedEntries = entries.filter(e => !e.removed && e.selected);
-	const targetEntries = selectedEntries.length > 0
-		? selectedEntries
-		: [entries.find(e => String(e.id) === String(id))].filter(Boolean);
+	const targetEntries = getEntryEditTargets(id);
 	if (!targetEntries.length) return;
 
 	const novo = _normalizeDecimalString(String(valorRaw ?? ''));
@@ -1653,15 +1686,13 @@ function updateEntryValorById(id, valorRaw) {
 		syncCreditoWithEntry(entry);
 	});
 
+	saveState();
 	renderTable();
 	renderTabelaCredito();
 }
 
 function updateEntryDateById(id, dateValue) {
-	const selectedEntries = entries.filter(e => !e.removed && e.selected);
-	const targetEntries = selectedEntries.length > 0
-		? selectedEntries
-		: [entries.find(e => String(e.id) === String(id))].filter(Boolean);
+	const targetEntries = getEntryEditTargets(id);
 	if (!targetEntries.length) return;
 
 	const normalized = normalizeDateValue(dateValue);
@@ -2039,7 +2070,8 @@ function importarPreenchimentoAutomatico() {
 			const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 			let sourceHeaders = rows.length ? Object.keys(rows[0]) : [];
 			if (!sourceHeaders.length) throw new Error('A planilha não possui uma linha de cabeçalho.');
-			const dataHeaderIndex = sourceHeaders.findIndex(header => ['data', 'date', 'dt'].includes(normalizePreenchimentoHeader(header)));
+			const dataHeader = findPreenchimentoHeader(sourceHeaders, ['data', 'date', 'dt', 'dia', 'data carga', 'data da carga']);
+			const dataHeaderIndex = dataHeader ? sourceHeaders.indexOf(dataHeader) : -1;
 			if (dataHeaderIndex >= 0) {
 				sourceHeaders = sourceHeaders.slice(0, dataHeaderIndex + 1);
 			} else {
@@ -2064,7 +2096,6 @@ function importarPreenchimentoAutomatico() {
 				if (header === motoristaHeader) preenchimentoHeaders.push('CPF');
 				if (header === placaHeader) preenchimentoHeaders.push('CARRETA 1', 'CARRETA 2');
 			});
-
 			let unmatched = 0;
 			const filledRows = rows.map(row => {
 				const unidade = getPreenchimentoValue(row, unidadeHeader);
@@ -2075,7 +2106,9 @@ function importarPreenchimentoAutomatico() {
 				const output = {};
 				sourceHeaders.forEach(header => {
 					if (skipHeader(header)) return;
-					output[header] = row[header] ?? '';
+					output[header] = header === dataHeader
+						? formatDateForDisplay(normalizeDateValue(row[header]))
+						: row[header] ?? '';
 					if (header === unidadeHeader) output.CNPJ = getCnpjForUnidade(unidade);
 					if (header === motoristaHeader) {
 						output[header] = fleetItem?.motoristaNome || motorista;
@@ -2317,33 +2350,43 @@ function exportToExcel() {
 }
 
 function moverParaBoleto(id) {
-	const entry = entries.find(e => String(e.id) === String(id));
-	if (!entry || entry.removed) return alert('Carga não encontrada');
-	
-	// Adiciona à lista de boletos
-	boletos.push({
-		id: entry.id,
-		dbId: null,
-		source_carga_id: entry.dbId || null,
-		unidade: entry.unidade,
-		etiqueta: entry.etiqueta || '',
-		data: entry.data || '',
-		selected: false,
-		removed: false,
-		distribuidora: entry.distribuidora,
-		motorista: entry.motorista || '',
-		produto: entry.produto,
-		volumeNorm: entry.volumeNorm,
-		litrosStr: entry.litrosStr,
-		valorNorm: entry.valorNorm,
-		totalStr: entry.totalStr
+	const targetEntries = getEntryEditTargets(id);
+	if (!targetEntries.length) return alert('Carga não encontrada');
+
+	targetEntries.forEach(entry => {
+		boletos.push({
+			id: entry.id,
+			dbId: null,
+			source_carga_id: entry.dbId || null,
+			unidade: entry.unidade,
+			etiqueta: entry.etiqueta || '',
+			data: entry.data || '',
+			selected: false,
+			removed: false,
+			distribuidora: entry.distribuidora,
+			motorista: entry.motorista || '',
+			produto: entry.produto,
+			volumeNorm: entry.volumeNorm,
+			litrosStr: entry.litrosStr,
+			valorNorm: entry.valorNorm,
+			totalStr: entry.totalStr
+		});
+		entry.removed = true;
+		entry.selected = false;
 	});
-	
-	// Remove da tabela principal
-	entry.removed = true;
-	
+
 	renderTable();
 	renderTabelaBoleto();
+	saveState();
+}
+
+function moverSelecionadosParaBoleto() {
+	const selected = entries.find(entry => !entry.removed && entry.selected);
+	if (!selected) {
+		alert('Selecione ao menos uma carga na tabela principal.');
+		return;
+	}
+	moverParaBoleto(selected.id);
 }
 
 function applyBoletoFilters() {
@@ -2775,35 +2818,45 @@ function toggleSelectBoleto(id, checked) {
 	renderTabelaBoleto();
 }
 
+function getBoletoEditTargets(id) {
+	const selectedBoletos = boletos.filter(boleto => boleto.selected && !boleto.removed);
+	if (selectedBoletos.length > 0) return selectedBoletos;
+	const boleto = boletos.find(item => String(item.id) === String(id) && !item.removed);
+	return boleto ? [boleto] : [];
+}
+
 function setBoletoUnidade(id, unidade) {
-	const boleto = boletos.find(b => String(b.id) === String(id));
-	if (!boleto) return;
-	boleto.unidade = String(unidade || '').trim();
+	const targets = getBoletoEditTargets(id);
+	if (!targets.length) return;
+	targets.forEach(boleto => {
+		boleto.unidade = String(unidade || '').trim();
+	});
 	saveState();
 	renderTabelaBoleto();
 }
 
 function setBoletoMotorista(id, motorista) {
-	const boleto = boletos.find(b => String(b.id) === String(id));
-	if (!boleto) return;
-	boleto.motorista = String(motorista || '').trim();
+	const targets = getBoletoEditTargets(id);
+	if (!targets.length) return;
+	targets.forEach(boleto => {
+		boleto.motorista = String(motorista || '').trim();
+	});
 	saveState();
 	renderTabelaBoleto();
 }
 
 function setBoletoLabel(id, label) {
-	const boleto = boletos.find(b => String(b.id) === String(id));
-	if (!boleto) return;
-	boleto.etiqueta = String(label || '');
+	const targets = getBoletoEditTargets(id);
+	if (!targets.length) return;
+	targets.forEach(boleto => {
+		boleto.etiqueta = String(label || '');
+	});
 	saveState();
 	renderTabelaBoleto();
 }
 
 function updateBoletoValorById(id, valorRaw) {
-	const selectedBoletos = boletos.filter(b => b.selected);
-	const targetBoletos = selectedBoletos.length > 0
-		? selectedBoletos
-		: [boletos.find(b => String(b.id) === String(id))].filter(Boolean);
+	const targetBoletos = getBoletoEditTargets(id);
 	if (!targetBoletos.length) return;
 
 	const novo = _normalizeDecimalString(String(valorRaw ?? ''));
@@ -2823,10 +2876,7 @@ function updateBoletoValorById(id, valorRaw) {
 }
 
 function updateBoletoDateById(id, dateValue) {
-	const selectedBoletos = boletos.filter(b => b.selected);
-	const targetBoletos = selectedBoletos.length > 0
-		? selectedBoletos
-		: [boletos.find(b => String(b.id) === String(id))].filter(Boolean);
+	const targetBoletos = getBoletoEditTargets(id);
 	if (!targetBoletos.length) return;
 
 	const normalized = normalizeDateValue(dateValue);
@@ -2845,20 +2895,30 @@ function updateBoletoDateById(id, dateValue) {
 }
 
 function editBoletoValorById(id) {
-	const boleto = boletos.find(b => String(b.id) === String(id));
-	if (!boleto) return alert('Carga não encontrada');
-	const current = boleto.valorNorm;
-	const input = prompt('Informe o novo Valor por litro para esta carga (use ponto para decimais):', current);
+	const targets = getBoletoEditTargets(id);
+	if (!targets.length) return alert('Carga não encontrada');
+	const input = prompt(`Informe o novo Valor por litro para ${targets.length > 1 ? 'as cargas selecionadas' : 'esta carga'} (use ponto para decimais):`, targets[0].valorNorm);
 	if (input === null) return;
 	const novo = _normalizeDecimalString(String(input));
 	if (novo === '0' && String(input).trim() !== '0') {
 		alert('Valor inválido');
 		return;
 	}
-	boleto.valorNorm = novo;
-	boleto.totalStr = multiplyDecimalStrings(boleto.litrosStr, boleto.valorNorm);
+	targets.forEach(boleto => {
+		boleto.valorNorm = novo;
+		boleto.totalStr = multiplyDecimalStrings(boleto.litrosStr, boleto.valorNorm);
+	});
 	saveState();
 	renderTabelaBoleto();
+}
+
+function editSelectedBoletoValor() {
+	const selected = boletos.find(boleto => boleto.selected && !boleto.removed);
+	if (!selected) {
+		alert('Selecione ao menos uma carga no boleto.');
+		return;
+	}
+	editBoletoValorById(selected.id);
 }
 
 function toggleSelectAllBoleto(checkbox) {
@@ -2868,6 +2928,7 @@ function toggleSelectAllBoleto(checkbox) {
 	const fProd = (boletoFilters.produto || '').toLowerCase().trim();
 	const fMotor = (boletoFilters.motorista || '').toLowerCase().trim();
 	boletos.forEach(boleto => {
+		if (boleto.removed) return;
 		if (fUnidade && !String(boleto.unidade || '').toLowerCase().includes(fUnidade)) return;
 		if (fDistrib && !String(boleto.distribuidora || '').toLowerCase().includes(fDistrib)) return;
 		if (fMotor && !String(boleto.motorista || '').toLowerCase().includes(fMotor)) return;
@@ -2883,14 +2944,6 @@ function clearBoletoSelection() {
 	const chk = document.getElementById('selectAllBoletoCheckbox'); if (chk) chk.checked = false;
 	saveState();
 	renderTabelaBoleto();
-}
-
-
-function setBoletoLabel(id, label) {
-	const boleto = boletos.find(b => String(b.id) === String(id));
-	if (!boleto) return;
-	boleto.etiqueta = String(label || '');
-	saveState();
 }
 
 function desfazerBoleto(id) {
@@ -2911,22 +2964,30 @@ function desfazerBoleto(id) {
 }
 
 function removerBoleto(id) {
-	const boletoIndex = boletos.findIndex(b => String(b.id) === String(id));
-	if (boletoIndex === -1) return;
+	const targetBoletos = getBoletoEditTargets(id);
+	if (!targetBoletos.length) return;
 	
 	// Soft delete: mantém o registro local para que o Supabase receba o tombstone
 	// e não recrie a carga em uma sincronização posterior.
-	boletos[boletoIndex].removed = true;
-	boletos[boletoIndex].selected = false;
-	
-	const entryIndex = entries.findIndex(e => String(e.id) === String(id));
-	if (entryIndex !== -1) {
-		entries[entryIndex].removed = true;
-	}
+	targetBoletos.forEach(boleto => {
+		boleto.removed = true;
+		boleto.selected = false;
+		const entry = entries.find(e => String(e.id) === String(boleto.id));
+		if (entry) entry.removed = true;
+	});
 	
 	renderTable();
 	renderTabelaBoleto();
 	saveState();
+}
+
+function removerBoletosSelecionados() {
+	const selected = boletos.filter(boleto => boleto.selected && !boleto.removed);
+	if (!selected.length) {
+		alert('Selecione ao menos uma carga no boleto.');
+		return;
+	}
+	removerBoleto(selected[0].id);
 }
 
 function getBoletoExportRows() {

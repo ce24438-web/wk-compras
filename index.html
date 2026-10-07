@@ -75,21 +75,9 @@
         <span class="tab-icon">🧩</span>
         <span class="tab-label">Preenchimento automático</span>
       </button>
-      <button class="tab-button" onclick="switchTab('tab-backup')">
-        <span class="tab-icon">💾</span>
-        <span class="tab-label">Backup</span>
-      </button>
-      <button class="tab-button user-menu-button" onclick="toggleUserMenu()" aria-expanded="false">
-        <span class="tab-icon">👤</span>
-        <span class="tab-label">Usuário</span>
-      </button>
-      <button type="button" class="system-info-button" onclick="openSystemInfo()" aria-label="Informações do sistema" title="Informações do sistema">
-        <span class="system-info-icon">i</span>
-        <span>Informações do sistema</span>
-      </button>
-      <button type="button" class="theme-toggle-button" onclick="toggleDarkMode()" aria-pressed="false" title="Ativar modo escuro">
-        <span class="theme-toggle-icon">☾</span>
-        <span class="theme-toggle-label">Modo escuro</span>
+      <button class="tab-button" onclick="switchTab('tab-configuracoes')">
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-label">Configurações</span>
       </button>
     </nav>
 
@@ -207,6 +195,8 @@
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
           <input type="text" id="bulkValor" placeholder="Novo valor por litro (ex: 5.12345)" style="width:220px;" />
           <button onclick="applyBulkValor()">Aplicar a selecionados</button>
+          <button onclick="moverSelecionadosParaBoleto()" style="background:#10b981;">Mover selecionados para Boleto</button>
+          <button onclick="removerSelecionadosPrincipal()" style="background:#ef4444;">Excluir selecionados</button>
           <button onclick="clearAllCargas()" style="background:#ef4444;">Limpar Cargas (Principal)</button>
           <button onclick="clearSelection()" style="background:#94a3b8;">Limpar seleção</button>
           <button onclick="exportToCsv()" style="background:#10b981;">Exportar CSV</button>
@@ -331,6 +321,8 @@
         </div>
 
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          <button onclick="editSelectedBoletoValor()" style="background:#f59e0b;">Editar valor dos selecionados</button>
+          <button onclick="removerBoletosSelecionados()" style="background:#ef4444;">Excluir selecionados</button>
           <button onclick="exportBoletoToCsv()" style="background:#10b981;">Exportar CSV</button>
           <button onclick="exportBoletoToExcel()" style="background:#2563eb;">Exportar Excel</button>
           <button onclick="clearBoletoSelection()" style="background:#94a3b8;">Limpar seleção</button>
@@ -508,9 +500,47 @@
       </div>
     </div> <!-- Fim tab-preenchimento -->
 
+    <!-- TAB CONFIGURAÇÕES -->
+    <div id="tab-configuracoes" class="tab-content">
+      <div class="card">
+        <h2 style="margin-top:0; color: var(--brand-blue-800);">Configurações</h2>
+        <div class="settings-cards">
+          <button type="button" class="settings-card" onclick="switchTab('tab-backup')">
+            <span class="settings-card-icon">💾</span>
+            <span>
+              <strong>Backup</strong>
+              <small>Exportar ou importar os dados do sistema.</small>
+            </span>
+          </button>
+          <button type="button" class="settings-card user-menu-button" onclick="toggleUserMenu()" aria-expanded="false">
+            <span class="settings-card-icon">👤</span>
+            <span>
+              <strong>Usuário</strong>
+              <small>Consultar a sessão e sair da conta.</small>
+            </span>
+          </button>
+          <button type="button" class="settings-card" onclick="openSystemInfo()">
+            <span class="settings-card-icon">ⓘ</span>
+            <span>
+              <strong>Informações do sistema</strong>
+              <small>Visualizar informações sobre o WK Compras.</small>
+            </span>
+          </button>
+          <button type="button" class="settings-card theme-toggle-card" onclick="toggleDarkMode()" aria-pressed="false">
+            <span class="settings-card-icon theme-toggle-icon">☾</span>
+            <span>
+              <strong class="theme-toggle-label">Modo escuro</strong>
+              <small>Alternar entre o modo claro e escuro.</small>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div> <!-- Fim tab-configuracoes -->
+
     <!-- TAB BACKUP: BACKUP DO SISTEMA -->
     <div id="tab-backup" class="tab-content">
       <div class="card">
+        <button type="button" class="settings-back-button" onclick="switchTab('tab-configuracoes')" aria-label="Voltar para configurações" title="Voltar para configurações">← Voltar</button>
         <h2 style="margin-top:0; color: var(--brand-blue-800);">Backup do sistema</h2>
         <div class="muted">Use o backup para restaurar seus dados se precisar alterar o código ou trocar de computador.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px;">
@@ -520,6 +550,29 @@
         </div>
       </div>
     </div> <!-- Fim tab-backup -->
+
+    <!-- TAB USUARIO: ACESSO DO USUARIO -->
+    <div id="tab-usuario" class="tab-content">
+      <div class="card settings-user-card">
+        <button type="button" class="settings-back-button" onclick="switchTab('tab-configuracoes')" aria-label="Voltar para configurações" title="Voltar para configurações">← Voltar</button>
+        <div class="auth-card-header">
+          <img src="cropped-WK.png" alt="WK Logo" class="auth-logo">
+          <div>
+            <h2>WK Compras</h2>
+            <p>Entre com seu e-mail e senha para acessar o sistema compartilhado.</p>
+          </div>
+        </div>
+        <form class="auth-form" onsubmit="handleLoginSubmit(event, 'user')">
+          <label for="userLoginEmail">E-mail</label>
+          <input type="email" id="userLoginEmail" autocomplete="email" placeholder="seuemail@empresa.com" required>
+          <label for="userLoginPassword">Senha</label>
+          <input type="password" id="userLoginPassword" autocomplete="current-password" placeholder="Sua senha" required>
+          <button type="submit" id="userLoginButton">Entrar</button>
+          <button type="button" class="auth-recovery-button" onclick="sendPasswordRecovery('user')">Esqueci minha senha</button>
+          <div id="userAuthMessage" class="auth-message" aria-live="polite"></div>
+        </form>
+      </div>
+    </div> <!-- Fim tab-usuario -->
 
   </div> <!-- Fim container -->
 </div> <!-- Fim main-layout -->
