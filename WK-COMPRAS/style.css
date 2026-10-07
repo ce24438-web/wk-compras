@@ -1243,6 +1243,32 @@ th, td {
 	vertical-align: middle;
 }
 
+table td.money-unit,
+table td.money-total {
+	color: #0f3f7c;
+	font-size: 15px;
+	font-weight: 800;
+	letter-spacing: 0.2px;
+	white-space: nowrap;
+}
+
+table td.money-total {
+	color: #064e9e;
+	font-size: 16px;
+}
+
+table td.money-unit input {
+	width: 100px !important;
+	min-height: 38px;
+	padding: 8px 10px;
+	border-color: rgba(11, 97, 216, 0.45);
+	background: #ffffff;
+	color: #0f172a;
+	font-size: 15px;
+	font-weight: 800;
+	text-align: right;
+}
+
 th {
 	background: linear-gradient(135deg, #0b61d8 0%, #2563eb 45%, #0e4daf 100%);
 	color: white;
@@ -1553,6 +1579,22 @@ body.dark-mode table {
 	background: #111d31;
 	border-color: rgba(148, 163, 184, 0.2);
 	box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
+}
+
+body.dark-mode table td.money-unit,
+body.dark-mode table td.money-total {
+	color: #f8fafc;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+body.dark-mode table td.money-total {
+	color: #bfdbfe;
+}
+
+body.dark-mode table td.money-unit input {
+	border-color: rgba(147, 197, 253, 0.55);
+	background: #17253b;
+	color: #ffffff;
 }
 
 body.dark-mode th,
