@@ -1620,8 +1620,8 @@ function renderTable() {
 			<td>${entry.produto}</td>
 			<td>${entry.volumeNorm}</td>
 			<td>${formatNumberFromDecimalString(entry.litrosStr)}</td>
-			<td><input type="number" step="0.0001" value="${String(entry.valorNorm || '0')}" onchange="updateEntryValorById('${entry.id}', this.value)" style="width:90px;" /></td>
-			<td>${formatarMoedaFromDecimalString(entry.totalStr)}</td>
+			<td class="money-unit"><input type="number" step="0.0001" value="${String(entry.valorNorm || '0')}" onchange="updateEntryValorById('${entry.id}', this.value)" style="width:90px;" /></td>
+			<td class="money-total">${formatarMoedaFromDecimalString(entry.totalStr)}</td>
 			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#10b981;" onclick="moverParaBoleto('${entry.id}')">Boleto</button><button class="delete-btn" style="background:#8b5cf6;" onclick="moverParaCredito('${entry.id}')">Crédito</button><button class="delete-btn" style="background:#f59e0b;" onclick="editValorById('${entry.id}')">Editar</button><button class="delete-btn" onclick="removerLinhaById('${entry.id}')">Excluir</button></td>
 		`;
 
@@ -2482,9 +2482,9 @@ function renderTabelaCredito() {
 			<td><input type="number" step="0.001" value="${String(item.novoVolumeNorm || '0')}" onchange="updateCreditoVolumeById('${item.id}', this.value)" style="width:90px;" /></td>
 			<td>${formatNumberFromDecimalString(item.litrosStr || '0')}</td>
 			<td>${formatNumberFromDecimalString(item.novoLitrosStr || '0')}</td>
-			<td>${formatarMoedaFromDecimalString(item.valorPago || item.totalStr || '0')}</td>
+			<td class="money-unit">${formatarMoedaFromDecimalString(item.valorPago || item.totalStr || '0')}</td>
 			<td><input type="number" step="0.0001" value="${String(item.novoValorNorm || '0')}" onchange="updateCreditoValorById('${item.id}', this.value)" style="width:90px;" /></td>
-			<td>${formatarMoedaFromDecimalString(item.novoTotalStr || '0')}</td>
+			<td class="money-total">${formatarMoedaFromDecimalString(item.novoTotalStr || '0')}</td>
 			<td class="${resumo.tipo === 'positivo' ? 'credito-positivo' : resumo.tipo === 'negativo' ? 'credito-negativo' : 'credito-zero'}">${resumo.label}: ${resumo.valor}</td>
 			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#10b981;" onclick="desfazerCredito('${item.id}')">Voltar</button><button class="delete-btn" onclick="removerCredito('${item.id}')">Excluir</button></td>
 		`;
@@ -2791,8 +2791,8 @@ function renderTabelaBoleto() {
 			<td>${boleto.produto}</td>
 			<td>${boleto.volumeNorm}</td>
 			<td>${formatNumberFromDecimalString(boleto.litrosStr)}</td>
-			<td><input type="number" step="0.0001" value="${String(boleto.valorNorm || '0')}" onchange="updateBoletoValorById('${boleto.id}', this.value)" style="width:90px;" /></td>
-			<td>${formatarMoedaFromDecimalString(boleto.totalStr)}</td>
+			<td class="money-unit"><input type="number" step="0.0001" value="${String(boleto.valorNorm || '0')}" onchange="updateBoletoValorById('${boleto.id}', this.value)" style="width:90px;" /></td>
+			<td class="money-total">${formatarMoedaFromDecimalString(boleto.totalStr)}</td>
 			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#f59e0b;" onclick="editBoletoValorById('${boleto.id}')">Editar</button><button class="delete-btn" style="background:#06b6d4;" onclick="desfazerBoleto('${boleto.id}')">Desfazer</button><button class="delete-btn" onclick="removerBoleto('${boleto.id}')">Excluir</button></td>
 		`;
 			totalBoleto = addDecimalStrings(totalBoleto, boleto.totalStr);
