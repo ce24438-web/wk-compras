@@ -9,6 +9,8 @@
 </head>
 <body>
 
+<a class="skip-link" href="#mainContent">Pular para o conteúdo principal</a>
+
 <div id="authGate" class="auth-gate">
   <div class="auth-card">
     <div class="auth-card-header">
@@ -92,8 +94,18 @@
   </aside>
 
   <!-- Conteúdo Principal -->
-  <div class="container">
-    <h1>WK Compras de Combustíveis</h1>
+  <main class="container" id="mainContent">
+    <header class="page-header">
+      <div>
+        <span class="page-eyebrow">Painel operacional</span>
+        <h1>WK Compras de Combustíveis</h1>
+        <p class="page-subtitle">Acompanhe cargas, boletos e créditos em um só lugar.</p>
+      </div>
+      <div class="page-header-status" aria-label="Status do sistema">
+        <span class="status-pulse" aria-hidden="true"></span>
+        <span>Pronto para operar</span>
+      </div>
+    </header>
 
     <!-- TAB PRINCIPAL: CARGAS E IMPORTAÇÃO PRINCIPAL -->
     <div id="tab-principal" class="tab-content active">
@@ -575,7 +587,7 @@
       </div>
     </div> <!-- Fim tab-usuario -->
 
-  </div> <!-- Fim container -->
+  </main> <!-- Fim container -->
 </div> <!-- Fim main-layout -->
 
   <footer class="site-footer" role="contentinfo">
