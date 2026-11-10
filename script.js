@@ -3,8 +3,13 @@ let entries = [];
 let boletos = []; // novo array para cargas no boleto
 let creditos = []; // novo array para acompanhamento de crédito a fornecedor
 let frota = [];
+let referenciasCompras = [];
+let fechamentosCompras = [];
+let fechamentoComprasSelecionadoId = '';
+let referenciasComprasSchemaError = '';
 let preenchimentoHeaders = [];
 let preenchimentoRows = [];
+const preenchimentoLinhasSelecionadas = new Set();
 let saldoCreditoChart = null;
 let resumoVolumeRows = [];
 let entryIdCounter = 1;
@@ -20,9 +25,18 @@ let wkSupabaseAuthInitialized = false;
 let wkRemoteHydrating = false;
 let wkRemoteSyncTimer = null;
 let wkRemoteReloadTimer = null;
+let wkRemoteSyncPending = false;
+let wkRemoteSyncInFlight = false;
+let wkRemoteReloadPending = false;
 let wkUnitLookup = [];
 
 const wkSupabaseClient = window.WK_SUPABASE_CLIENT || null;
+const MOTORISTA_ALIASES = {
+	'marcio': {
+		nome: 'MARCIO DENIS DA SILVA',
+		cpf: '711.178.571-15'
+	}
+};
 
 const UNIDADE_CNPJ_MAP = [
 	{ cnpj: '37.489.383/0003-85', aliases: ['BM PLANALTINA', 'PLANALTINA'] },
@@ -50,9 +64,21 @@ function normalizeLookupText(value) {
 		.replace(/[^a-z0-9]+/g, '');
 }
 
+function getKnownUnitCnpj(unidade) {
+	const normalizedUnidade = normalizeLookupText(unidade);
+	if (!normalizedUnidade) return '';
+	const exactMatch = UNIDADE_CNPJ_MAP.find(item =>
+		item.aliases.some(alias => normalizeLookupText(alias) === normalizedUnidade)
+	);
+	if (exactMatch) return exactMatch.cnpj;
+	return '';
+}
+
 function getCnpjForUnidade(unidade) {
 	const normalizedUnidade = normalizeLookupText(unidade);
 	if (!normalizedUnidade) return '';
+	const exactCnpj = getKnownUnitCnpj(unidade);
+	if (exactCnpj) return exactCnpj;
 	for (const item of UNIDADE_CNPJ_MAP) {
 		if (item.aliases.some(alias => normalizedUnidade.includes(normalizeLookupText(alias)))) {
 			return item.cnpj;
@@ -469,6 +495,7 @@ class WKComprasPersistenceController {
 			preenchimentoHeaders,
 			preenchimentoRows,
 			resumoVolumeRows,
+			referenciasCompras,
 			entryIdCounter,
 			activeFilters,
 			boletoFilters
@@ -486,6 +513,15 @@ class WKComprasPersistenceController {
 			if (Array.isArray(state.creditos)) creditos = state.creditos.map(item => ({ etiqueta: '', selected: Boolean(item.selected), valorPago: '0', ...item }));
 			if (Array.isArray(state.preenchimentoHeaders)) preenchimentoHeaders = state.preenchimentoHeaders;
 			if (Array.isArray(state.preenchimentoRows)) preenchimentoRows = state.preenchimentoRows;
+			if (Array.isArray(state.referenciasCompras)) referenciasCompras = state.referenciasCompras.map(item => ({
+				id: String(item.id || generateLocalRecordId()),
+				unidade: String(item.unidade || ''),
+				produto: String(item.produto || ''),
+				valorUnitario: _normalizeDecimalString(String(item.valorUnitario ?? '0')),
+				distribuidor: String(item.distribuidor || ''),
+				base: String(item.base || ''),
+				ativo: item.ativo !== false
+			}));
 			if (Array.isArray(state.resumoVolumeRows)) resumoVolumeRows = state.resumoVolumeRows.map(row => ({ unidade: '', produto: '', total: '0', ...row }));
 			entryIdCounter = typeof state.entryIdCounter === 'number' && state.entryIdCounter > 0 ? state.entryIdCounter : entryIdCounter;
 			activeFilters = state.activeFilters || activeFilters;
@@ -503,6 +539,7 @@ class WKComprasPersistenceController {
 			renderTabelaCredito();
 			renderTabelaSaldoCredito();
 			renderPreenchimentoTable();
+			renderReferenciasCompras();
 			renderResumoVolumeTable();
 			wkComprasLayoutController.renderDistribuidorChart();
 		} catch (err) {
@@ -617,6 +654,7 @@ function mapCreditoRowToLocal(row) {
 function mapFrotaRowToLocal(row) {
 	return {
 		id: String(row.id || ''),
+		dbId: row.id || null,
 		categoria: String(row.categoria || 'FROTA'),
 		veiculo: String(row.veiculo || ''),
 		carreta1: String(row.carreta_1 || ''),
@@ -624,6 +662,56 @@ function mapFrotaRowToLocal(row) {
 		motoristaNome: String(row.motorista_nome || ''),
 		motoristaCpf: String(row.motorista_cpf || ''),
 		ativo: row.ativo !== false
+	};
+}
+
+function mapReferenciaCompraRowToLocal(row) {
+	return {
+		id: String(row.id || ''),
+		dbId: row.id || null,
+		unidade: String(row.unidade || ''),
+		produto: String(row.produto || ''),
+		valorUnitario: _normalizeDecimalString(String(row.valor_unitario ?? '0')),
+		distribuidor: String(row.distribuidor || ''),
+		base: String(row.base || ''),
+		ativo: row.ativo !== false
+	};
+}
+
+function mapFechamentoCompraRowToLocal(row) {
+	return {
+		id: String(row.id || ''),
+		dataReferencia: String(row.data_referencia || ''),
+		descricao: String(row.descricao || ''),
+		createdAt: row.created_at || null
+	};
+}
+
+function mapReferenciaCompraItemRowToLocal(row) {
+	return {
+		id: String(row.id || ''),
+		dbId: row.id || null,
+		fechamentoId: String(row.fechamento_id || ''),
+		unidade: String(row.unidade || ''),
+		produto: String(row.produto || ''),
+		valorUnitario: _normalizeDecimalString(String(row.valor_unitario ?? '0')),
+		distribuidor: String(row.distribuidor || ''),
+		base: String(row.base || ''),
+		ativo: true
+	};
+}
+
+function mapReferenciaCompraToRemoteRow(item) {
+	return {
+		id: item.dbId || undefined,
+		unidade: String(item.unidade || '').trim(),
+		produto: String(item.produto || '').trim(),
+		valor_unitario: Number.parseFloat(_normalizeDecimalString(String(item.valorUnitario || '0'))) || 0,
+		distribuidor: String(item.distribuidor || '').trim(),
+		base: String(item.base || '').trim(),
+		ativo: item.ativo !== false,
+		created_by: item.created_by || (currentSupabaseUser ? currentSupabaseUser.id : null),
+		updated_by: currentSupabaseUser ? currentSupabaseUser.id : null
 	};
 }
 
@@ -671,7 +759,9 @@ function mapBoletoToRemoteRow(boleto) {
 		selected: Boolean(boleto.selected),
 		removed: Boolean(boleto.removed),
 		removed_at: boleto.removed ? new Date().toISOString() : null,
-		removed_by: boleto.removed ? (currentSupabaseUser ? currentSupabaseUser.id : null) : null
+		removed_by: boleto.removed ? (currentSupabaseUser ? currentSupabaseUser.id : null) : null,
+		created_by: boleto.created_by || (currentSupabaseUser ? currentSupabaseUser.id : null),
+		updated_by: currentSupabaseUser ? currentSupabaseUser.id : null
 	};
 }
 
@@ -702,7 +792,9 @@ function mapCreditoToRemoteRow(item) {
 		selected: Boolean(item.selected),
 		removed: Boolean(item.removed),
 		removed_at: item.removed ? new Date().toISOString() : null,
-		removed_by: item.removed ? (currentSupabaseUser ? currentSupabaseUser.id : null) : null
+		removed_by: item.removed ? (currentSupabaseUser ? currentSupabaseUser.id : null) : null,
+		created_by: item.created_by || (currentSupabaseUser ? currentSupabaseUser.id : null),
+		updated_by: currentSupabaseUser ? currentSupabaseUser.id : null
 	};
 }
 
@@ -717,16 +809,33 @@ class WKComprasSupabaseSyncController {
 
 	queueSync() {
 		if (!this.isReady() || wkRemoteHydrating) return;
+		wkRemoteSyncPending = true;
 		if (wkRemoteSyncTimer) clearTimeout(wkRemoteSyncTimer);
 		wkRemoteSyncTimer = setTimeout(() => {
-			this.syncNow().catch(err => reportSupabaseSyncError('Erro ao sincronizar com Supabase', err));
+			wkRemoteSyncTimer = null;
+			wkRemoteSyncInFlight = true;
+			this.syncNow()
+				.catch(err => reportSupabaseSyncError('Erro ao sincronizar com Supabase', err))
+				.finally(() => {
+					wkRemoteSyncPending = false;
+					wkRemoteSyncInFlight = false;
+					if (wkRemoteReloadPending) {
+						wkRemoteReloadPending = false;
+						this.queueReload();
+					}
+				});
 		}, 450);
 	}
 
 	queueReload() {
 		if (!this.isReady() || wkRemoteHydrating) return;
+		if (wkRemoteSyncPending || wkRemoteSyncInFlight) {
+			wkRemoteReloadPending = true;
+			return;
+		}
 		if (wkRemoteReloadTimer) clearTimeout(wkRemoteReloadTimer);
 		wkRemoteReloadTimer = setTimeout(() => {
+			wkRemoteReloadTimer = null;
 			this.loadRemoteState().catch(err => reportSupabaseSyncError('Erro ao recarregar do Supabase', err));
 		}, 300);
 	}
@@ -771,7 +880,6 @@ class WKComprasSupabaseSyncController {
 				frota = [];
 				console.warn('Tabela de frota ainda não foi criada no Supabase.');
 			}
-
 			let remoteResumoRows = [];
 			const latestImport = Array.isArray(resumoImportResult.data) ? resumoImportResult.data[0] : null;
 			if (latestImport) {
@@ -818,6 +926,7 @@ class WKComprasSupabaseSyncController {
 			renderTabelaSaldoCredito();
 			renderResumoVolumeTable();
 			wkComprasLayoutController.renderDistribuidorChart();
+			renderReferenciasCompras();
 
 			const hasRemoteData = remoteEntries.length > 0 || remoteBoletos.length > 0 || remoteCreditos.length > 0 || remoteResumoRows.length > 0;
 			if (!hasRemoteData && localRaw) {
@@ -886,6 +995,88 @@ class WKComprasSupabaseSyncController {
 		applyDbIds(entryUpsert.data, entries);
 		applyDbIds(boletoUpsert.data, boletos);
 		applyDbIds(creditoUpsert.data, creditos);
+	}
+
+	async saveFechamentoCompra(dataReferencia, descricao) {
+		if (!this.isReady()) throw new Error('É necessário estar autenticado para salvar uma referência.');
+		if (currentSupabaseProfile?.role !== 'ADMIN') throw new Error('Somente administradores podem alterar referências de compras.');
+		const { data, error } = await this.client
+			.from('fechamentos_compras')
+			.insert({
+				data_referencia: dataReferencia,
+				descricao: String(descricao || '').trim(),
+				created_by: currentSupabaseUser.id,
+				updated_by: currentSupabaseUser.id
+			})
+			.select('*')
+			.single();
+		if (error) throw error;
+		return mapFechamentoCompraRowToLocal(data);
+	}
+
+	async saveReferenciaCompra(item) {
+		if (!this.isReady()) throw new Error('É necessário estar autenticado para salvar uma referência.');
+		if (currentSupabaseProfile?.role !== 'ADMIN') throw new Error('Somente administradores podem alterar referências de compras.');
+		if (!item.fechamentoId) throw new Error('Selecione ou crie um fechamento diário antes de salvar.');
+		const [unidadeId, produtoId, distribuidorId, baseId] = await Promise.all([
+			this.ensureReferenciaCatalogId('referencias_unidades', item.unidade),
+			this.ensureReferenciaCatalogId('referencias_produtos', item.produto),
+			this.ensureReferenciaCatalogId('referencias_distribuidores', item.distribuidor),
+			this.ensureReferenciaCatalogId('referencias_bases', item.base)
+		]);
+		const row = {
+			id: item.dbId || undefined,
+			fechamento_id: item.fechamentoId,
+			unidade_id: unidadeId,
+			produto_id: produtoId,
+			distribuidor_id: distribuidorId,
+			base_id: baseId,
+			unidade: String(item.unidade || '').trim(),
+			produto: String(item.produto || '').trim(),
+			valor_unitario: Number.parseFloat(_normalizeDecimalString(String(item.valorUnitario || '0'))) || 0,
+			distribuidor: String(item.distribuidor || '').trim(),
+			base: String(item.base || '').trim(),
+			created_by: item.created_by || currentSupabaseUser.id,
+			updated_by: currentSupabaseUser.id
+		};
+		const { data, error } = await this.client
+			.from('referencias_compras_itens')
+			.upsert(row, { onConflict: 'id' })
+			.select('*')
+			.single();
+		if (error) throw error;
+		return mapReferenciaCompraItemRowToLocal(data);
+	}
+
+	async ensureReferenciaCatalogId(table, value) {
+		const name = String(value || '').trim();
+		if (!name) return null;
+		const { data, error } = await this.client.from(table).select('id, nome');
+		if (error) throw error;
+		const normalized = normalizeReferenciaKey(name);
+		const existing = (data || []).find(item => normalizeReferenciaKey(item.nome) === normalized);
+		if (existing) return existing.id;
+		const { data: inserted, error: insertError } = await this.client
+			.from(table)
+			.insert({ nome: name, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+			.select('id')
+			.single();
+		if (insertError) throw insertError;
+		return inserted.id;
+	}
+
+	async deleteReferenciaCompra(id) {
+		if (!this.isReady()) throw new Error('É necessário estar autenticado para excluir uma referência.');
+		if (currentSupabaseProfile?.role !== 'ADMIN') throw new Error('Somente administradores podem excluir referências de compras.');
+		const { error } = await this.client.from('referencias_compras_itens').delete().eq('id', id);
+		if (error) throw error;
+	}
+
+	async deleteFechamentoCompra(id) {
+		if (!this.isReady()) throw new Error('É necessário estar autenticado para excluir um fechamento.');
+		if (currentSupabaseProfile?.role !== 'ADMIN') throw new Error('Somente administradores podem excluir fechamentos.');
+		const { error } = await this.client.from('fechamentos_compras').delete().eq('id', id);
+		if (error) throw error;
 	}
 
 	async migrateLocalStorageToSupabase(localRaw) {
@@ -1089,6 +1280,200 @@ function reportSupabaseSyncError(context, error) {
 	return message;
 }
 
+function normalizeReferenciaKey(value) {
+		return normalizeLookupText(value);
+	}
+
+	function normalizeReferenciaUnitKey(value) {
+		return normalizeReferenciaKey(value).replace(/mt$/, '');
+	}
+
+	function findReferenciaCompra(unidade, produto, cnpj) {
+		const unidadeKey = normalizeReferenciaKey(unidade);
+		const unidadeCanonicalKey = normalizeReferenciaUnitKey(unidade);
+		const produtoKey = normalizeReferenciaKey(produto);
+		if (!unidadeKey || !produtoKey) return null;
+		const candidates = referenciasCompras.filter(item =>
+			item.ativo !== false
+			&& normalizeReferenciaKey(item.produto) === produtoKey
+		);
+		const exact = candidates.filter(item => normalizeReferenciaKey(item.unidade) === unidadeKey);
+		if (exact.length === 1) return exact[0];
+		if (exact.length > 1) return null;
+
+		const unitMatches = candidates.filter(item => normalizeReferenciaUnitKey(item.unidade) === unidadeCanonicalKey);
+		if (unitMatches.length !== 1) return null;
+
+		const sourceCnpj = String(cnpj || '').replace(/\D/g, '');
+		const referenceCnpj = getKnownUnitCnpj(unitMatches[0].unidade).replace(/\D/g, '');
+		if (sourceCnpj && referenceCnpj && sourceCnpj !== referenceCnpj) return null;
+		return unitMatches[0];
+	}
+
+	function selecionarFechamentoCompra(id) {
+			return id;
+	}
+
+	async function criarFechamentoCompra() {
+		return null;
+	}
+
+	function formatReferenceValue(value) {
+		const normalized = _normalizeDecimalString(String(value || '0'));
+		return normalized === '0' ? '' : normalized.replace('.', ',');
+	}
+
+	function renderReferenciasCompras() {
+		const table = document.getElementById('tabelaReferenciasCompras');
+		if (!table) return;
+		const tbody = table.querySelector('tbody');
+		tbody.innerHTML = '';
+		const selectedItems = referenciasCompras.filter(item => item.ativo !== false);
+		selectedItems.forEach(item => {
+			const row = tbody.insertRow();
+			row.innerHTML = `
+				<td>${escapeHtml(item.unidade)}</td>
+				<td>${escapeHtml(item.produto)}</td>
+				<td>${escapeHtml(formatReferenceValue(item.valorUnitario))}</td>
+				<td>${escapeHtml(item.distribuidor)}</td>
+				<td>${escapeHtml(item.base)}</td>
+				<td><button type="button" onclick="editarReferenciaCompra('${item.id}')">Editar</button><button type="button" class="danger-button" onclick="excluirReferenciaCompra('${item.id}')">Excluir</button></td>
+			`;
+		});
+		const empty = document.getElementById('referenciasComprasVazio');
+		if (empty) empty.style.display = selectedItems.length ? 'none' : 'block';
+		const unidadeSelect = document.getElementById('referenciaUnidade');
+		if (unidadeSelect) {
+			const currentValue = unidadeSelect.value;
+			unidadeSelect.innerHTML = buildReferenceOptions(UNIDADE_CNPJ_MAP.flatMap(item => item.aliases).filter((value, index, values) => values.indexOf(value) === index), currentValue);
+			unidadeSelect.value = currentValue;
+		}
+		const produtoSelect = document.getElementById('referenciaProduto');
+		if (produtoSelect) {
+			const currentValue = produtoSelect.value;
+			produtoSelect.innerHTML = buildReferenceOptions(['GASOLINA COMUM', 'GASOLINA ADITIVADA', 'DIESEL S10', 'DIESEL S500', 'S-10', 'S-500', 'ETANOL'], currentValue);
+			produtoSelect.value = currentValue;
+		}
+		const form = document.getElementById('formReferenciaCompra');
+		if (form) form.style.display = '';
+		const note = document.getElementById('referenciasComprasPermissao');
+		if (note) note.textContent = '';
+	}
+
+	function buildReferenceOptions(values, currentValue) {
+		const options = ['<option value="">Selecione</option>'];
+		values.forEach(value => {
+			options.push(`<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`);
+		});
+		if (currentValue && !values.includes(currentValue)) options.push(`<option value="${escapeHtml(currentValue)}">${escapeHtml(currentValue)}</option>`);
+		return options.join('');
+	}
+
+	function escapeHtml(value) {
+		return String(value || '').replace(/[&<>"']/g, character => ({
+			'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+		}[character]));
+	}
+
+	function limparFormularioReferenciaCompra() {
+		const form = document.getElementById('formReferenciaCompra');
+		if (form) form.reset();
+		const id = document.getElementById('referenciaCompraId');
+		if (id) id.value = '';
+		const cancel = document.getElementById('cancelarEdicaoReferencia');
+		if (cancel) cancel.style.display = 'none';
+	}
+
+	function editarReferenciaCompra(id) {
+		const item = referenciasCompras.find(reference => reference.id === String(id));
+		if (!item) return;
+		document.getElementById('referenciaCompraId').value = item.id;
+		document.getElementById('referenciaUnidade').value = item.unidade;
+		document.getElementById('referenciaProduto').value = item.produto;
+		document.getElementById('referenciaValorUnitario').value = formatReferenceValue(item.valorUnitario);
+		document.getElementById('referenciaDistribuidor').value = item.distribuidor;
+		document.getElementById('referenciaBase').value = item.base;
+		document.getElementById('cancelarEdicaoReferencia').style.display = '';
+	}
+
+	async function salvarReferenciaCompra(event) {
+		event.preventDefault();
+		const unidade = document.getElementById('referenciaUnidade').value.trim();
+		const produto = document.getElementById('referenciaProduto').value.trim();
+		if (!unidade || !produto) {
+			alert('Informe a Unidade e o Produto.');
+			return;
+		}
+		const id = document.getElementById('referenciaCompraId').value;
+		const duplicate = referenciasCompras.find(item =>
+			item.id !== id
+			&& normalizeReferenciaKey(item.unidade) === normalizeReferenciaKey(unidade)
+			&& normalizeReferenciaKey(item.produto) === normalizeReferenciaKey(produto)
+		);
+		if (duplicate) {
+			alert('Já existe uma referência cadastrada para essa Unidade + Produto.');
+			return;
+		}
+		const item = {
+			id: id || generateLocalRecordId(),
+			unidade,
+			produto,
+			valorUnitario: _normalizeDecimalString(document.getElementById('referenciaValorUnitario').value),
+			distribuidor: document.getElementById('referenciaDistribuidor').value.trim(),
+			base: document.getElementById('referenciaBase').value.trim()
+		};
+		const index = referenciasCompras.findIndex(reference => reference.id === item.id);
+		if (index >= 0) referenciasCompras[index] = item;
+		else referenciasCompras.push(item);
+		referenciasCompras.sort((left, right) => `${left.unidade} ${left.produto}`.localeCompare(`${right.unidade} ${right.produto}`));
+		limparFormularioReferenciaCompra();
+		saveLocalStateOnly();
+		renderReferenciasCompras();
+	}
+
+	async function salvarReferenciasEmLote() {
+		const textarea = document.getElementById('referenciasLote');
+		const linhas = String(textarea?.value || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+		if (!linhas.length) {
+			alert('Informe ao menos uma linha no formato UNIDADE;PRODUTO;VALOR;DISTRIBUIDOR;BASE.');
+			return;
+		}
+		try {
+			for (const linha of linhas) {
+				const [unidade, produto, valorUnitario, distribuidor, base] = linha.split(/[;\t]/).map(value => String(value || '').trim());
+				if (!unidade || !produto) throw new Error(`Linha inválida: ${linha}`);
+				const existente = referenciasCompras.find(item =>
+					normalizeReferenciaKey(item.unidade) === normalizeReferenciaKey(unidade)
+					&& normalizeReferenciaKey(item.produto) === normalizeReferenciaKey(produto)
+				);
+				const saved = {
+					id: existente?.id || generateLocalRecordId(),
+					unidade,
+					produto,
+					valorUnitario: _normalizeDecimalString(valorUnitario),
+					distribuidor,
+					base
+				};
+				const index = referenciasCompras.findIndex(item => item.id === saved.id);
+				if (index >= 0) referenciasCompras[index] = saved;
+				else referenciasCompras.push(saved);
+			}
+			if (textarea) textarea.value = '';
+			saveLocalStateOnly();
+			renderReferenciasCompras();
+			alert(`${linhas.length} item(ns) salvo(s).`);
+		} catch (error) {
+			alert(`Não foi possível salvar o lote: ${error.message || error}`);
+		}
+	}
+
+	async function excluirReferenciaCompra(id) {
+		if (!confirm('Excluir esta referência de compras?')) return;
+		referenciasCompras = referenciasCompras.filter(item => item.id !== String(id));
+		saveLocalStateOnly();
+		renderReferenciasCompras();
+}
+
 function updateAuthUi(connected) {
 	const body = document.body;
 	const authGate = document.getElementById('authGate');
@@ -1170,12 +1555,12 @@ function setAuthMessage(message, isError = true) {
 
 async function handleLoginSubmit(event, formType = 'gate') {
 	if (event) event.preventDefault();
+	const messageId = formType === 'user' ? 'userAuthMessage' : 'authMessage';
 	if (!wkSupabaseClient) {
-		setAuthMessage('Supabase não está configurado neste ambiente.');
+		setAuthMessageFor(messageId, 'Supabase não está configurado neste ambiente.');
 		return;
 	}
 	const prefix = formType === 'user' ? 'userLogin' : 'login';
-	const messageId = formType === 'user' ? 'userAuthMessage' : 'authMessage';
 	const emailInput = document.getElementById(`${prefix}Email`);
 	const passwordInput = document.getElementById(`${prefix}Password`);
 	const button = document.getElementById(`${prefix}Button`);
@@ -1274,6 +1659,7 @@ function setupPasswordRecoveryUi() {
 }
 
 async function logout() {
+	saveLocalStateOnly();
 	if (wkSupabaseClient) {
 		await wkSupabaseClient.auth.signOut();
 	}
@@ -1620,7 +2006,7 @@ function renderTable() {
 			<td>${entry.produto}</td>
 			<td>${entry.volumeNorm}</td>
 			<td>${formatNumberFromDecimalString(entry.litrosStr)}</td>
-			<td class="money-unit"><input type="number" step="0.0001" value="${String(entry.valorNorm || '0')}" onchange="updateEntryValorById('${entry.id}', this.value)" style="width:90px;" /></td>
+			<td class="money-unit"><input type="text" inputmode="decimal" value="${String(entry.valorNorm || '0').replace('.', ',')}" onchange="updateEntryValorById('${entry.id}', this.value)" style="width:90px;" /></td>
 			<td class="money-total">${formatarMoedaFromDecimalString(entry.totalStr)}</td>
 			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#10b981;" onclick="moverParaBoleto('${entry.id}')">Boleto</button><button class="delete-btn" style="background:#8b5cf6;" onclick="moverParaCredito('${entry.id}')">Crédito</button><button class="delete-btn" style="background:#f59e0b;" onclick="editValorById('${entry.id}')">Editar</button><button class="delete-btn" onclick="removerLinhaById('${entry.id}')">Excluir</button></td>
 		`;
@@ -1978,51 +2364,81 @@ function getPreenchimentoValue(row, header) {
 	return header ? String(row[header] ?? '').trim() : '';
 }
 
-function fleetPlateDistance(first, second) {
-	const a = normalizeLookupText(first);
-	const b = normalizeLookupText(second);
-	if (!a || !b) return Number.MAX_SAFE_INTEGER;
-	if (a === b) return 0;
-	if (Math.abs(a.length - b.length) > 1) return Number.MAX_SAFE_INTEGER;
-	let edits = 0;
-	let left = 0;
-	let right = 0;
-	while (left < a.length && right < b.length) {
-		if (a[left] === b[right]) {
-			left++;
-			right++;
-			continue;
-		}
-		edits++;
-		if (edits > 1) return edits;
-		if (a.length > b.length) left++;
-		else if (b.length > a.length) right++;
-		else {
-			left++;
-			right++;
-		}
-	}
-	return edits + (a.length - left) + (b.length - right);
+function getFirstTwoNameKey(value) {
+	const normalized = String(value || '')
+		.toLowerCase()
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim();
+	return normalized.split(/\s+/).filter(Boolean).slice(0, 2).join('');
 }
 
-function findFrotaForPreenchimento(motorista, placa) {
+function isSameDriverByFirstTwoNames(inputName, fleetName) {
+	const inputKey = getFirstTwoNameKey(inputName);
+	const fleetKey = getFirstTwoNameKey(fleetName);
+	return Boolean(inputKey && fleetKey && inputKey === fleetKey);
+}
+
+function isPartialDriverNameMatch(inputName, fleetName) {
+	const inputTokens = String(inputName || '')
+		.toLowerCase()
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim()
+		.split(/\s+/)
+		.filter(Boolean);
+	const fleetTokens = String(fleetName || '')
+		.toLowerCase()
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim()
+		.split(/\s+/)
+		.filter(Boolean);
+	if (!inputTokens.length || !fleetTokens.length) return false;
+	return inputTokens.every(token => fleetTokens.includes(token));
+}
+
+function findMotoristaForPreenchimento(motorista) {
 	const nameNorm = normalizeLookupText(motorista);
-	const plateNorm = normalizeLookupText(placa);
 	const activeFleet = frota.filter(item => item.ativo !== false);
-	const byName = nameNorm ? activeFleet.filter(item => normalizeLookupText(item.motoristaNome) === nameNorm) : [];
-	const exactPlate = plateNorm ? activeFleet.filter(item => normalizeLookupText(item.veiculo) === plateNorm) : [];
-	const byNameAndPlate = byName.filter(item => normalizeLookupText(item.veiculo) === plateNorm);
-	if (byNameAndPlate.length === 1) return byNameAndPlate[0];
-	if (exactPlate.length === 1) return exactPlate[0];
-
-	const closePlateMatches = plateNorm
-		? activeFleet.filter(item => fleetPlateDistance(item.veiculo, placa) <= 1)
+	const alias = MOTORISTA_ALIASES[nameNorm];
+	if (alias) {
+		return activeFleet.find(item => normalizeLookupText(item.motoristaCpf) === normalizeLookupText(alias.cpf))
+			|| activeFleet.find(item => normalizeLookupText(item.motoristaNome) === normalizeLookupText(alias.nome))
+			|| {
+				motoristaNome: alias.nome,
+				motoristaCpf: alias.cpf
+			};
+	}
+	const byName = nameNorm
+		? activeFleet.filter(item => isSameDriverByFirstTwoNames(motorista, item.motoristaNome))
 		: [];
-	if (closePlateMatches.length === 1) return closePlateMatches[0];
-	if (byName.length === 1) return byName[0];
+	const byPartialName = nameNorm
+		? activeFleet.filter(item => isPartialDriverNameMatch(motorista, item.motoristaNome))
+		: [];
 
-	const closeMatches = closePlateMatches.filter(item => !nameNorm || normalizeLookupText(item.motoristaNome) === nameNorm);
-	return closeMatches.length === 1 ? closeMatches[0] : null;
+	const uniqueDriverByCpf = matches => {
+		const withCpf = matches.filter(item => normalizeLookupText(item.motoristaCpf));
+		const cpfs = new Set(withCpf.map(item => normalizeLookupText(item.motoristaCpf)));
+		return cpfs.size === 1 ? withCpf[0] : null;
+	};
+
+	return uniqueDriverByCpf(byName)
+		|| uniqueDriverByCpf(byPartialName)
+		|| (byName.length === 1 ? byName[0] : null)
+		|| (byPartialName.length === 1 ? byPartialName[0] : null);
+}
+
+function findCavaloForPreenchimento(placa) {
+	const plateNorm = normalizeLookupText(placa);
+	if (!plateNorm) return null;
+	const matches = frota
+		.filter(item => item.ativo !== false)
+		.filter(item => normalizeLookupText(item.veiculo) === plateNorm);
+	return matches.length === 1 ? matches[0] : null;
 }
 
 function renderPreenchimentoTable() {
@@ -2033,13 +2449,23 @@ function renderPreenchimentoTable() {
 	thead.innerHTML = '';
 	tbody.innerHTML = '';
 	if (!preenchimentoHeaders.length) return;
+	atualizarOpcoesFiltrosPreenchimento();
 	const headerRow = thead.insertRow();
+	const selectAllCell = document.createElement('th');
+	const selectAll = document.createElement('input');
+	selectAll.type = 'checkbox';
+	selectAll.setAttribute('aria-label', 'Selecionar todas as linhas exibidas');
+	const filteredRows = obterLinhasFiltradasPreenchimento();
+	selectAll.checked = filteredRows.length > 0 && filteredRows.every(({ rowIndex }) => preenchimentoLinhasSelecionadas.has(rowIndex));
+	selectAll.addEventListener('change', event => selecionarLinhasPreenchimentoVisiveis(event.currentTarget.checked));
+	selectAllCell.appendChild(selectAll);
+	headerRow.appendChild(selectAllCell);
 	preenchimentoHeaders.forEach(header => {
 		const cell = document.createElement('th');
 		cell.textContent = header;
 		headerRow.appendChild(cell);
 	});
-	preenchimentoRows.slice(0, 100).forEach(row => {
+	filteredRows.slice(0, 100).forEach(({ row, rowIndex }) => {
 		if (row.__spacer) {
 			const spacerRow = tbody.insertRow();
 			spacerRow.className = 'preenchimento-spacer-row';
@@ -2049,11 +2475,228 @@ function renderPreenchimentoTable() {
 			return;
 		}
 		const tableRow = tbody.insertRow();
+		const selectionCell = tableRow.insertCell();
+		const selectionInput = document.createElement('input');
+		selectionInput.type = 'checkbox';
+		selectionInput.checked = preenchimentoLinhasSelecionadas.has(rowIndex);
+		selectionInput.setAttribute('aria-label', `Selecionar linha ${rowIndex + 1}`);
+		selectionInput.addEventListener('change', event => {
+			if (event.currentTarget.checked) preenchimentoLinhasSelecionadas.add(rowIndex);
+			else preenchimentoLinhasSelecionadas.delete(rowIndex);
+			atualizarEstadoEdicaoEmLote();
+		});
+		selectionCell.appendChild(selectionInput);
 		preenchimentoHeaders.forEach(header => {
 			const cell = tableRow.insertCell();
+			if (['VALOR UNITÁRIO', 'DISTRIBUIDOR', 'BASE'].includes(header)) {
+				const input = document.createElement('input');
+				input.type = 'text';
+				input.value = String(row[header] ?? '');
+				input.className = 'preenchimento-editable-cell';
+				input.dataset.rowIndex = String(rowIndex);
+				input.dataset.field = header;
+				input.setAttribute('aria-label', `${header}, linha ${rowIndex + 1}`);
+				input.addEventListener('keydown', event => {
+					if (event.key === 'Enter') {
+						event.preventDefault();
+						event.currentTarget.blur();
+					}
+				});
+				input.addEventListener('blur', event => {
+					salvarEdicaoPreenchimento(rowIndex, header, event.currentTarget.value);
+				});
+				cell.appendChild(input);
+				return;
+			}
 			cell.textContent = String(row[header] ?? '');
 		});
 	});
+	atualizarEstadoEdicaoEmLote();
+}
+
+function selecionarLinhasPreenchimentoVisiveis(selected) {
+	obterLinhasFiltradasPreenchimento().slice(0, 100).forEach(({ rowIndex }) => {
+		if (selected) preenchimentoLinhasSelecionadas.add(rowIndex);
+		else preenchimentoLinhasSelecionadas.delete(rowIndex);
+	});
+	renderPreenchimentoTable();
+}
+
+function atualizarEstadoEdicaoEmLote() {
+	const toolbar = document.getElementById('preenchimentoEdicaoLote');
+	if (toolbar) toolbar.classList.toggle('is-active', preenchimentoLinhasSelecionadas.size > 0);
+	const count = document.getElementById('preenchimentoSelecionadasCount');
+	if (count) count.textContent = `${preenchimentoLinhasSelecionadas.size} linha(s) selecionada(s)`;
+}
+
+function aplicarEdicaoEmLotePreenchimento() {
+	const selectedRows = [...preenchimentoLinhasSelecionadas]
+		.map(index => preenchimentoRows[index])
+		.filter(row => row && !row.__spacer);
+	if (!selectedRows.length) {
+		alert('Selecione ao menos uma linha para editar em lote.');
+		return;
+	}
+	const values = {
+		'VALOR UNITÁRIO': document.getElementById('edicaoLoteValorUnitario')?.value.trim() || '',
+		DISTRIBUIDOR: document.getElementById('edicaoLoteDistribuidor')?.value.trim() || '',
+		BASE: document.getElementById('edicaoLoteBase')?.value.trim() || ''
+	};
+	const fields = Object.keys(values).filter(field => values[field] !== '');
+	if (!fields.length) {
+		alert('Informe ao menos um valor para aplicar às linhas selecionadas.');
+		return;
+	}
+	selectedRows.forEach(row => fields.forEach(field => { row[field] = values[field]; }));
+	saveLocalStateOnly();
+	renderPreenchimentoTable();
+}
+
+function obterLinhasFiltradasPreenchimento() {
+	const unidadeSelect = document.getElementById('filtroPreenchimentoUnidade');
+	const unidadesFiltro = unidadeSelect
+		? [...unidadeSelect.querySelectorAll('input[type="checkbox"]:checked')]
+			.map(input => normalizeLookupText(input.value)).filter(Boolean)
+		: [];
+	const produtoFiltro = normalizeLookupText(document.getElementById('filtroPreenchimentoProduto')?.value);
+	return preenchimentoRows
+		.map((row, rowIndex) => ({ row, rowIndex }))
+		.filter(({ row }) => {
+			if (row.__spacer) return false;
+			const unidadeOk = !unidadesFiltro.length || unidadesFiltro.some(filtro => isSamePreenchimentoUnit(row.UNIDADE, filtro));
+			const produtoOk = !produtoFiltro || normalizeLookupText(row.PRODUTO) === produtoFiltro;
+			return unidadeOk && produtoOk;
+		});
+}
+
+function isSamePreenchimentoUnit(rowUnit, filterUnit) {
+	const rowKey = normalizeLookupText(rowUnit);
+	const filterKey = normalizeLookupText(filterUnit);
+	if (!rowKey || !filterKey) return false;
+	if (rowKey === filterKey) return true;
+	if ((filterKey === 'regional' && rowKey === 'regionalderivados')
+		|| (filterKey === 'regionalderivados' && rowKey === 'regional')) return true;
+	const rowCnpj = getKnownUnitCnpj(rowUnit).replace(/\D/g, '');
+	const filterCnpj = getKnownUnitCnpj(filterUnit).replace(/\D/g, '');
+	return Boolean(rowCnpj && filterCnpj && rowCnpj === filterCnpj);
+}
+
+function atualizarOpcoesFiltrosPreenchimento() {
+	const unidadeSelect = document.getElementById('filtroPreenchimentoUnidade');
+	const produtoSelect = document.getElementById('filtroPreenchimentoProduto');
+	if (!unidadeSelect || !produtoSelect) return;
+	const unidadesAtuais = [...unidadeSelect.querySelectorAll('input[type="checkbox"]:checked')]
+		.map(input => normalizeLookupText(input.value));
+	const produtoAtual = produtoSelect.value;
+	const unidadesDaPlanilha = preenchimentoRows
+		.filter(row => !row.__spacer)
+		.map(row => String(row.UNIDADE || '').trim())
+		.filter(Boolean);
+	const unidadesFixas = [
+		'PLANALTINA',
+		'RIO VERDE',
+		'ANAPOLIS',
+		'CAMPINORTE',
+		'NIQUELANDIA',
+		'REGIONAL',
+		'REGIONAL DERIVADOS',
+		'JARAGUA',
+		'JATAI',
+		'CATALAO',
+		'GOIANESIA',
+		'KBW',
+		'WK 14',
+		'QUERENCIA',
+		'QUERENCIA MT'
+	];
+	const unidades = [...new Map([...unidadesFixas, ...unidadesDaPlanilha]
+		.filter(Boolean)
+		.map(value => [normalizeLookupText(value), value])).values()]
+		.sort((left, right) => left.localeCompare(right));
+	const produtos = [...new Set(preenchimentoRows
+		.filter(row => !row.__spacer)
+		.map(row => String(row.PRODUTO || '').trim())
+		.filter(Boolean))]
+		.sort((left, right) => left.localeCompare(right));
+	unidadeSelect.innerHTML = `
+		<label class="preenchimento-unidade-opcao preenchimento-unidade-todas">
+			<input type="checkbox" value="" ${unidadesAtuais.length ? '' : 'checked'}
+				onchange="alterarFiltroUnidadesPreenchimento(this)">
+			<span>Todas as unidades</span>
+		</label>
+		${unidades.map((value, index) => `
+			<label class="preenchimento-unidade-opcao">
+				<input type="checkbox" value="${escapeHtml(value)}"
+					${unidadesAtuais.includes(normalizeLookupText(value)) ? 'checked' : ''}
+					onchange="alterarFiltroUnidadesPreenchimento(this)">
+				<span>${escapeHtml(value)}</span>
+			</label>
+		`).join('')}`;
+	produtoSelect.innerHTML = '<option value="">Todos os produtos</option>'
+		+ produtos.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
+	if (produtos.some(value => normalizeLookupText(value) === normalizeLookupText(produtoAtual))) produtoSelect.value = produtoAtual;
+}
+
+function aplicarFiltrosPreenchimento() {
+	renderPreenchimentoTable();
+}
+
+function alterarFiltroUnidadesPreenchimento() {
+	const unidadeSelect = document.getElementById('filtroPreenchimentoUnidade');
+	if (unidadeSelect) {
+		const inputs = [...unidadeSelect.querySelectorAll('input[type="checkbox"]')];
+		const allOption = inputs.find(input => input.value === '');
+		const selectedSpecific = inputs.some(input => input.value !== '' && input.checked);
+		if (allOption) allOption.checked = !selectedSpecific;
+		if (selectedSpecific && allOption) allOption.checked = false;
+	}
+	aplicarFiltrosPreenchimento();
+}
+
+function limparFiltrosPreenchimento() {
+	const unidadeSelect = document.getElementById('filtroPreenchimentoUnidade');
+	const produtoSelect = document.getElementById('filtroPreenchimentoProduto');
+	if (unidadeSelect) {
+		[...unidadeSelect.querySelectorAll('input[type="checkbox"]')].forEach(input => {
+			input.checked = input.value === '';
+		});
+	}
+	if (produtoSelect) produtoSelect.value = '';
+	renderPreenchimentoTable();
+}
+
+function salvarEdicaoPreenchimento(rowIndex, header, value) {
+	if (!['VALOR UNITÁRIO', 'DISTRIBUIDOR', 'BASE'].includes(header)) return;
+	const normalizedValue = String(value ?? '').trim();
+	const selectedIndexes = [...preenchimentoLinhasSelecionadas]
+		.filter(index => preenchimentoRows[index] && !preenchimentoRows[index].__spacer);
+	const targetIndexes = selectedIndexes.includes(rowIndex) ? selectedIndexes : [rowIndex];
+	let changed = false;
+	targetIndexes.forEach(index => {
+		const row = preenchimentoRows[index];
+		if (row[header] !== normalizedValue) {
+			row[header] = normalizedValue;
+			changed = true;
+		}
+	});
+	if (!changed) return;
+	saveLocalStateOnly();
+	if (targetIndexes.length > 1) renderPreenchimentoTable();
+}
+
+function salvarEdicoesPreenchimentoEmAberto() {
+	document.querySelectorAll('#tabelaPreenchimento input.preenchimento-editable-cell').forEach(input => {
+		const rowIndex = Number(input.dataset.rowIndex);
+		const header = input.dataset.field;
+		if (!Number.isInteger(rowIndex) || !header) return;
+		const selectedIndexes = [...preenchimentoLinhasSelecionadas]
+			.filter(index => preenchimentoRows[index] && !preenchimentoRows[index].__spacer);
+		const targetIndexes = selectedIndexes.includes(rowIndex) ? selectedIndexes : [rowIndex];
+		targetIndexes.forEach(index => {
+			if (preenchimentoRows[index]) preenchimentoRows[index][header] = String(input.value || '').trim();
+		});
+	});
+	saveLocalStateOnly();
 }
 
 function importarPreenchimentoAutomatico() {
@@ -2081,50 +2724,99 @@ function importarPreenchimentoAutomatico() {
 			}
 
 			const unidadeHeader = findPreenchimentoHeader(sourceHeaders, ['unidade', 'unit', 'posto', 'estabelecimento']);
+			const cnpjHeader = findPreenchimentoHeader(sourceHeaders, ['cnpj', 'cnpj unidade', 'cnpj do estabelecimento']);
+			const produtoHeader = findPreenchimentoHeader(sourceHeaders, ['produto', 'produto combustível', 'produto combustivel', 'combustível', 'combustivel']);
 			const motoristaHeader = findPreenchimentoHeader(sourceHeaders, ['motorista', 'nome motorista', 'condutor', 'driver']);
-			const placaHeader = findPreenchimentoHeader(sourceHeaders, ['placa', 'veiculo', 'caminhao', 'caminhão']);
+			const placaHeader = findPreenchimentoHeader(sourceHeaders, [
+				'placa',
+				'placa cavalo',
+				'placa do cavalo',
+				'placa do caminhão',
+				'placa caminhao',
+				'veiculo',
+				'caminhao',
+				'caminhão',
+				'cavalo'
+			]);
 			const skipHeader = header => {
 				const normalized = normalizePreenchimentoHeader(header);
-				return normalized === 'cnpj' || normalized === 'cpf' || normalized.startsWith('carreta');
+				return normalized === 'cnpj'
+					|| normalized === 'cpf'
+					|| normalized.startsWith('carreta')
+					|| normalized === 'placadacarreta1'
+					|| normalized === 'placadacarreta2';
 			};
-
-			preenchimentoHeaders = [];
-			sourceHeaders.forEach(header => {
-				if (skipHeader(header)) return;
-				preenchimentoHeaders.push(header);
-				if (header === unidadeHeader) preenchimentoHeaders.push('CNPJ');
-				if (header === motoristaHeader) preenchimentoHeaders.push('CPF');
-				if (header === placaHeader) preenchimentoHeaders.push('CARRETA 1', 'CARRETA 2');
-			});
+			const volumeHeader = findPreenchimentoHeader(sourceHeaders, ['volume', 'volume m3', 'volume m³', 'quantidade', 'quantidade m3']);
+			const referenciaFields = [
+				{ key: 'valorUnitario', header: findPreenchimentoHeader(sourceHeaders, ['valor unitário', 'valor unitario', 'valor litro', 'preço', 'preco']), canonical: 'VALOR UNITÁRIO' },
+				{ key: 'distribuidor', header: findPreenchimentoHeader(sourceHeaders, ['distribuidora', 'distribuidor']), canonical: 'DISTRIBUIDOR' },
+				{ key: 'base', header: findPreenchimentoHeader(sourceHeaders, ['base']), canonical: 'BASE' }
+			];
+			const outputHeaders = [
+				{ canonical: 'UNIDADE', source: unidadeHeader },
+				{ canonical: 'CNPJ' },
+				{ canonical: 'PRODUTO', source: produtoHeader },
+				{ canonical: 'VOLUME', source: volumeHeader },
+				...referenciaFields.map(field => ({ canonical: field.canonical, source: field.header, reference: field })),
+				{ canonical: 'MOTORISTA', source: motoristaHeader },
+				{ canonical: 'CPF' },
+				{ canonical: 'PLACA', source: placaHeader },
+				{ canonical: 'CARRETA 1' },
+				{ canonical: 'CARRETA 2' },
+				{ canonical: 'DATA', source: dataHeader }
+			];
+			preenchimentoHeaders = outputHeaders.map(field => field.canonical);
 			let unmatched = 0;
 			const filledRows = rows.map(row => {
 				const unidade = getPreenchimentoValue(row, unidadeHeader);
 				const motorista = getPreenchimentoValue(row, motoristaHeader);
 				const placa = getPreenchimentoValue(row, placaHeader);
-				const fleetItem = findFrotaForPreenchimento(motorista, placa);
-				if (!fleetItem && (motorista || placa)) unmatched++;
+				const produto = getPreenchimentoValue(row, produtoHeader);
+				const cnpj = getPreenchimentoValue(row, cnpjHeader);
+				const referencia = findReferenciaCompra(unidade, produto, cnpj);
+				const motoristaItem = findMotoristaForPreenchimento(motorista);
+				const cavaloItem = findCavaloForPreenchimento(placa);
+				if ((motorista && !motoristaItem) || (placa && !cavaloItem)) unmatched++;
 				const output = {};
-				sourceHeaders.forEach(header => {
-					if (skipHeader(header)) return;
-					output[header] = header === dataHeader
-						? formatDateForDisplay(normalizeDateValue(row[header]))
-						: row[header] ?? '';
-					if (header === unidadeHeader) output.CNPJ = getCnpjForUnidade(unidade);
-					if (header === motoristaHeader) {
-						output[header] = fleetItem?.motoristaNome || motorista;
-						output.CPF = fleetItem?.motoristaCpf || '';
+				outputHeaders.forEach(field => {
+					if (field.canonical === 'CNPJ') {
+						output[field.canonical] = getCnpjForUnidade(unidade);
+						return;
 					}
-					if (header === placaHeader) {
-						output['CARRETA 1'] = fleetItem?.carreta1 || '';
-						output['CARRETA 2'] = fleetItem?.carreta2 || '';
+					if (field.canonical === 'CPF') {
+						output[field.canonical] = motoristaItem?.motoristaCpf || '';
+						return;
 					}
+					if (field.canonical === 'CARRETA 1') {
+						output[field.canonical] = cavaloItem?.carreta1 || '';
+						return;
+					}
+					if (field.canonical === 'CARRETA 2') {
+						output[field.canonical] = cavaloItem?.carreta2 || '';
+						return;
+					}
+					if (field.reference) {
+						const manualValue = field.source ? getPreenchimentoValue(row, field.source) : '';
+						output[field.canonical] = manualValue || (!referencia ? '' : field.reference.key === 'valorUnitario'
+							? formatReferenceValue(referencia[field.reference.key])
+							: referencia[field.reference.key] || '');
+						return;
+					}
+					if (field.canonical === 'MOTORISTA') {
+						output[field.canonical] = motoristaItem?.motoristaNome || motorista;
+						return;
+					}
+					output[field.canonical] = field.canonical === 'DATA'
+						? formatDateForDisplay(normalizeDateValue(row[field.source]))
+						: field.source ? row[field.source] ?? '' : '';
 				});
 				return output;
 			});
 			preenchimentoRows = [];
+			preenchimentoLinhasSelecionadas.clear();
 			let previousDriver = '';
 			filledRows.forEach(row => {
-				const currentDriver = normalizeLookupText(row[motoristaHeader] || '');
+				const currentDriver = normalizeLookupText(row.MOTORISTA || '');
 				if (preenchimentoRows.length && currentDriver && previousDriver && currentDriver !== previousDriver) {
 					preenchimentoRows.push({ __spacer: true });
 				}
@@ -2137,7 +2829,7 @@ function importarPreenchimentoAutomatico() {
 			if (status) {
 				const statusText = !frota.length
 					? `${preenchimentoRows.length} linhas processadas, mas a tabela de frota não está carregada no Supabase.`
-					: `${preenchimentoRows.length} linhas processadas.${unmatched ? ` ${unmatched} sem vínculo encontrado na frota.` : ' Todos os vínculos foram encontrados.'}`;
+					: `${preenchimentoRows.length} linhas processadas.${unmatched ? ` ${unmatched} sem CPF do motorista ou carretas do cavalo encontrados.` : ' Todos os CPFs e carretas foram encontrados.'}`;
 				status.innerHTML = `<span class="preenchimento-status-dot"></span><span>${statusText}</span>`;
 			}
 		} catch (error) {
@@ -2163,6 +2855,7 @@ function exportarPreenchimentoAutomatico() {
 function limparPreenchimentoAutomatico() {
 	preenchimentoHeaders = [];
 	preenchimentoRows = [];
+	preenchimentoLinhasSelecionadas.clear();
 	const input = document.getElementById('fileInputPreenchimento');
 	if (input) input.value = '';
 	renderPreenchimentoTable();
@@ -2483,7 +3176,7 @@ function renderTabelaCredito() {
 			<td>${formatNumberFromDecimalString(item.litrosStr || '0')}</td>
 			<td>${formatNumberFromDecimalString(item.novoLitrosStr || '0')}</td>
 			<td class="money-unit">${formatarMoedaFromDecimalString(item.valorPago || item.totalStr || '0')}</td>
-			<td><input type="number" step="0.0001" value="${String(item.novoValorNorm || '0')}" onchange="updateCreditoValorById('${item.id}', this.value)" style="width:90px;" /></td>
+			<td><input type="text" inputmode="decimal" value="${String(item.novoValorNorm || '0').replace('.', ',')}" onchange="updateCreditoValorById('${item.id}', this.value)" style="width:90px;" /></td>
 			<td class="money-total">${formatarMoedaFromDecimalString(item.novoTotalStr || '0')}</td>
 			<td class="${resumo.tipo === 'positivo' ? 'credito-positivo' : resumo.tipo === 'negativo' ? 'credito-negativo' : 'credito-zero'}">${resumo.label}: ${resumo.valor}</td>
 			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#10b981;" onclick="desfazerCredito('${item.id}')">Voltar</button><button class="delete-btn" onclick="removerCredito('${item.id}')">Excluir</button></td>
@@ -2791,7 +3484,7 @@ function renderTabelaBoleto() {
 			<td>${boleto.produto}</td>
 			<td>${boleto.volumeNorm}</td>
 			<td>${formatNumberFromDecimalString(boleto.litrosStr)}</td>
-			<td class="money-unit"><input type="number" step="0.0001" value="${String(boleto.valorNorm || '0')}" onchange="updateBoletoValorById('${boleto.id}', this.value)" style="width:90px;" /></td>
+			<td class="money-unit"><input type="text" inputmode="decimal" value="${String(boleto.valorNorm || '0').replace('.', ',')}" onchange="updateBoletoValorById('${boleto.id}', this.value)" style="width:90px;" /></td>
 			<td class="money-total">${formatarMoedaFromDecimalString(boleto.totalStr)}</td>
 			<td style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"><button class="delete-btn" style="background:#f59e0b;" onclick="editBoletoValorById('${boleto.id}')">Editar</button><button class="delete-btn" style="background:#06b6d4;" onclick="desfazerBoleto('${boleto.id}')">Desfazer</button><button class="delete-btn" onclick="removerBoleto('${boleto.id}')">Excluir</button></td>
 		`;
@@ -3159,6 +3852,7 @@ function exportVolumeResumoToExcel() {
 }
 
 window.addEventListener('beforeunload', function (event) {
+	salvarEdicoesPreenchimentoEmAberto();
 	if (entries.length > 0 || boletos.length > 0) {
 		event.preventDefault();
 		event.returnValue = '';

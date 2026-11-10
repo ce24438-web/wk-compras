@@ -157,7 +157,7 @@
           </div>
           <div>
             <label>Valor por litro (R$)</label>
-            <input type="number" id="valor" step="0.0001" placeholder="5.35">
+            <input type="text" inputmode="decimal" id="valor" placeholder="5,35">
           </div>
         </div>
         <button onclick="adicionarCarga()">Adicionar Carga</button>
@@ -292,7 +292,7 @@
           </div>
           <div>
             <label>Valor por litro (R$)</label>
-            <input type="number" id="boletoValor" step="0.0001" placeholder="5.35">
+            <input type="text" inputmode="decimal" id="boletoValor" placeholder="5,35">
           </div>
           </div>
 
@@ -481,7 +481,7 @@
           <div>
             <span class="preenchimento-eyebrow">Automação operacional</span>
             <h2>Preenchimento automático</h2>
-            <p>Enriqueça sua planilha com CNPJ, CPF e carretas vinculadas à placa.</p>
+            <p>Enriqueça sua planilha com CNPJ, CPF do motorista e carretas vinculadas exclusivamente à placa do cavalo.</p>
           </div>
           <div class="preenchimento-mark">↗</div>
         </div>
@@ -501,6 +501,32 @@
         <div class="preenchimento-status" id="preenchimentoStatus">
           <span class="preenchimento-status-dot"></span>
           <span>Nenhuma planilha processada.</span>
+        </div>
+
+        <div class="preenchimento-filtros" aria-label="Filtros da tabela preenchida">
+          <label>Filtrar por Unidade
+            <div id="filtroPreenchimentoUnidade" class="preenchimento-unidade-filtro" aria-label="Selecione uma ou mais unidades"></div>
+          </label>
+          <label>Filtrar por Produto
+            <select id="filtroPreenchimentoProduto" onchange="aplicarFiltrosPreenchimento()">
+              <option value="">Todos os produtos</option>
+            </select>
+          </label>
+          <button type="button" onclick="limparFiltrosPreenchimento()">Limpar filtros</button>
+        </div>
+
+        <div id="preenchimentoEdicaoLote" class="preenchimento-edicao-lote" aria-label="Edição em lote">
+          <strong id="preenchimentoSelecionadasCount">0 linha(s) selecionada(s)</strong>
+          <label>Valor Unitário
+            <input type="text" id="edicaoLoteValorUnitario" placeholder="Ex.: 5,05">
+          </label>
+          <label>Distribuidor
+            <input type="text" id="edicaoLoteDistribuidor" placeholder="Ex.: RODOBRAS">
+          </label>
+          <label>Base
+            <input type="text" id="edicaoLoteBase" placeholder="Ex.: DTC">
+          </label>
+          <button type="button" onclick="aplicarEdicaoEmLotePreenchimento()">Aplicar às selecionadas</button>
         </div>
 
         <div class="table-scroll preenchimento-table-wrap">
